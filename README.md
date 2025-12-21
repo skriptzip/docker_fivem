@@ -63,6 +63,16 @@ docker run -d \
 
 _Note: Interactive and pseudo-tty options (`-ti`) are required to prevent container crashes on startup_
 
+### Connect to WebSocket
+
+You can connect to the FiveM server's WebSocket endpoint using wscat:
+
+```bash
+wscat -c ws://localhost:30121
+```
+
+This is useful for monitoring and interacting with the server in real-time.
+
 ## 🏗️ Build Arguments
 
 | Argument | Default | Description |
