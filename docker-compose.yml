@@ -1,6 +1,6 @@
 services:
   fivem-server:
-    image: ghcr.io/skriptzip/fivem-docker:latest
+    image: ghcr.io/skriptzip/fivem:latest
     container_name: fivem
     restart: on-failure
     environment:
