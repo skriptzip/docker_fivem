@@ -1,6 +1,6 @@
 # FiveM Docker Server
 
-[![Docker Image](https://img.shields.io/badge/docker-fivem--docker-blue.svg)](https://github.com/skriptzip/docker_fivem)
+[![Docker Image](https://img.shields.io/badge/docker-docker__fivem-blue.svg)](https://github.com/skriptzip/docker_fivem)
 [![FiveM Version](https://img.shields.io/badge/fivem-18443-green.svg)](https://fivem.net/)
 
 A containerized FiveM server based on Alpine Linux with automatic configuration and OneSync support.
