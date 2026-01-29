@@ -14,6 +14,32 @@ if ! find . -mindepth 1 | read -r; then
     >&2 echo "----------------------------------------------"
 fi
 
+# Replace environment variables in server.cfg (${VAR_NAME} syntax)
+if [ -f /config/server.cfg ]; then
+    >&2 echo "Replacing environment variables in server.cfg..."
+    # Create a temporary file
+    cp /config/server.cfg /config/server.cfg.tmp
+    
+    # Use envsubst to replace all ${VAR} syntax with environment variables
+    # If envsubst is not available, use sed to replace common variables
+    if command -v envsubst > /dev/null 2>&1; then
+        envsubst < /config/server.cfg.tmp > /config/server.cfg
+    else
+        # Fallback: manually replace known environment variables
+        sed -i "s/\${RCON_PASSWORD}/${RCON_PASSWORD}/g" /config/server.cfg
+        sed -i "s/\${SERVER_NAME}/${SERVER_NAME}/g" /config/server.cfg
+        sed -i "s/\${SERVER_DESC}/${SERVER_DESC}/g" /config/server.cfg
+        sed -i "s/\${MAX_CLIENTS}/${MAX_CLIENTS}/g" /config/server.cfg
+        sed -i "s/\${STEAM_API_KEY}/${STEAM_API_KEY}/g" /config/server.cfg
+        sed -i "s/\${MYSQL_CONNECTION}/${MYSQL_CONNECTION}/g" /config/server.cfg
+        sed -i "s/\${SERVER_TAGS}/${SERVER_TAGS}/g" /config/server.cfg
+        sed -i "s/\${LOCALE}/${LOCALE}/g" /config/server.cfg
+    fi
+    
+    rm -f /config/server.cfg.tmp
+    >&2 echo "Environment variables replaced successfully"
+fi
+
 if [ -z "$NO_ONESYNC" ]; then
     ONESYNC_ARGS="+set onesync on +set onesync_population true"
 fi

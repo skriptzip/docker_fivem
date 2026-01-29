@@ -6,6 +6,14 @@ services:
     environment:
       - LICENSE_KEY=${LICENSE_KEY}
       - ENABLE_WEBSOCKET=1
+      - RCON_PASSWORD=${RCON_PASSWORD:-changeme}
+      - SERVER_NAME=${SERVER_NAME:-FiveM Server}
+      - SERVER_DESC=${SERVER_DESC:-A FiveM Server}
+      - SERVER_TAGS=${SERVER_TAGS:-default}
+      - MAX_CLIENTS=${MAX_CLIENTS:-32}
+      - STEAM_API_KEY=${STEAM_API_KEY:-none}
+      - MYSQL_CONNECTION=${MYSQL_CONNECTION:-mysql://user:password@localhost:3306/database}
+      - LOCALE=${LOCALE:-en-US}
     ports:
       - "30120:30120"
       - "30120:30120/udp"
@@ -21,6 +29,14 @@ services:
     environment:
       - LICENSE_KEY=${LICENSE_KEY}
       - ENABLE_WEBSOCKET=1
+      - RCON_PASSWORD=${RCON_PASSWORD:-changeme}
+      - SERVER_NAME=${SERVER_NAME:-FiveM Server}
+      - SERVER_DESC=${SERVER_DESC:-A FiveM Server}
+      - SERVER_TAGS=${SERVER_TAGS:-default}
+      - MAX_CLIENTS=${MAX_CLIENTS:-32}
+      - STEAM_API_KEY=${STEAM_API_KEY:-none}
+      - MYSQL_CONNECTION=${MYSQL_CONNECTION:-mysql://user:password@localhost:3306/database}
+      - LOCALE=${LOCALE:-en-US}
     ports:
       - "30120:30120"
       - "30120:30120/udp"
