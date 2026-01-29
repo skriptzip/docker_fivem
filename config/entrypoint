@@ -26,30 +26,18 @@ fi
 # Generate server.cfg from template with environment variables
 if [ -n "$TEMPLATE_FILE" ] && [ -f "$TEMPLATE_FILE" ]; then
     >&2 echo "Generating server.cfg from template..."
-    >&2 echo "Environment variables:"
-    >&2 echo "  RCON_PASSWORD=${RCON_PASSWORD}"
-    >&2 echo "  SERVER_NAME=${SERVER_NAME}"
-    >&2 echo "  SERVER_DESC=${SERVER_DESC}"
-    >&2 echo "  SERVER_TAGS=${SERVER_TAGS}"
-    >&2 echo "  MAX_CLIENTS=${MAX_CLIENTS}"
-    >&2 echo "  STEAM_API_KEY=${STEAM_API_KEY}"
-    >&2 echo "  MYSQL_CONNECTION=${MYSQL_CONNECTION}"
-    >&2 echo "  LOCALE=${LOCALE}"
-    
-    export RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE
-    
-    if command -v envsubst > /dev/null 2>&1; then
-        envsubst < "$TEMPLATE_FILE" > /config/server.cfg
-        if [ $? -eq 0 ]; then
-            >&2 echo "✓ server.cfg generated successfully using envsubst"
-        else
-            >&2 echo "ERROR: envsubst failed"
-            exit 1
+    cp "$TEMPLATE_FILE" /config/server.cfg
+
+    # Replace only variables that are defined in the environment
+    # This leaves unknown ${VAR} placeholders unchanged
+    printenv | while IFS='=' read -r var_name var_value; do
+        if [ -n "$var_name" ]; then
+            var_escaped=$(printf '%s\n' "$var_value" | sed -e 's/[\\/|&]/\\&/g')
+            sed -i "s|\${$var_name}|$var_escaped|g" /config/server.cfg
         fi
-    else
-        >&2 echo "ERROR: envsubst not found - cannot generate server.cfg"
-        exit 1
-    fi
+    done
+
+    >&2 echo "✓ server.cfg generated successfully"
 fi
 
 if [ -z "$NO_ONESYNC" ]; then
