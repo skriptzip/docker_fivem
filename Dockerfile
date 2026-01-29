@@ -22,7 +22,7 @@ RUN apk add --no-cache wget xz tar nodejs npm \
         | tar xz --strip-components=1 -C opt/cfx-server-data
 
 # Add config + entrypoint + websocket server (fixed paths)
-COPY config/server.cfg opt/cfx-server-data/
+COPY config/server.cfg.template opt/cfx-server-data/
 COPY config/package.json usr/local/
 COPY config/server.js usr/local/
 COPY config/entrypoint usr/bin/entrypoint

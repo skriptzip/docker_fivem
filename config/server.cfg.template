@@ -1,0 +1,81 @@
+# Only change if you want to add multiple fivem instances
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+
+# These resources will start by default.
+start mapmanager
+start chat
+start spawnmanager
+start sessionmanager
+start fivem
+start hardcap
+start rconlog
+start scoreboard
+start playernames
+
+# Enforce a specific game build https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build
+set sv_enforceGameBuild 3570
+
+# MySQL connection string
+set mysql_connection_string "${MYSQL_CONNECTION}"
+
+# This disallows players to use scripthook based plugins such as lambda menu.
+sv_scriptHookAllowed 0
+
+# change this
+rcon_password ${RCON_PASSWORD}
+
+# A comma-separated list of tags for your server.
+# For example:
+# - sets tags "drifting, cars, racing"
+sets tags "${SERVER_TAGS}"
+
+# Set your Steam Web API key here. https://steamcommunity.com/dev/apikey
+set steam_webApiKey "${STEAM_API_KEY}"
+
+# Set your server name here.
+sv_hostname "${SERVER_NAME}"
+sets sv_projectName "${SERVER_NAME}"
+sets sv_projectDesc "${SERVER_DESC}"
+
+# replace with your language and location code, like en-US, pt-BR, etc
+sets locale "${LOCALE}"
+
+# Set an optional server info and connecting banner image url.
+# Size doesn't matter, any banner sized image will be fine.
+#load_server_icon myLogo.png
+#sets banner_detail "http://url.to/image.png"
+#sets banner_connecting "http://url.to/image.png"
+
+# Nested configs!
+#exec server_internal.cfg
+
+# Loading a server icon (96x96 PNG file)
+#load_server_icon myLogo.png
+
+# convars which can be used in scripts
+set temp_convar "hey world!"
+
+# Uncomment this line if you do not want your server to be listed in the server browser.
+#sv_master1 ""
+
+# Want to only allow players authenticated with a third-party provider like Steam?
+# Don't forget Social Club is a third party provider too!
+#sv_authMaxVariance 1
+#sv_authMinTrust 5
+
+# Add system admins
+add_ace group.admin command allow # allow all commands
+add_ace group.admin command.quit deny # but don't allow quit
+# add_principal identifier.steam:110000112345678 group.admin # add the admin to the group
+
+# Hide player endpoints in external log output.
+sv_endpointprivacy true
+
+# Server player slot limit (must be between 1 and 32)
+sv_maxclients ${MAX_CLIENTS}
+
+
+# Chat config
+set chat_showJoins true
+set chat_showQuits true

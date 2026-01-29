@@ -7,37 +7,52 @@ fi
 if ! find . -mindepth 1 | read -r; then
     >&2 echo "Creating default configs..."
     cp -r /opt/cfx-server-data/* /config
-    RCON_PASS="${RCON_PASSWORD-$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 16)}"
-    sed -i "s/{RCON_PASS}/${RCON_PASS}/g" /config/server.cfg;
-    >&2 echo "----------------------------------------------"
-    >&2 echo "RCON password is set to: ${RCON_PASS}"
-    >&2 echo "----------------------------------------------"
+    >&2 echo "Default configs created"
 fi
 
-# Replace environment variables in server.cfg (${VAR_NAME} syntax)
-if [ -f /config/server.cfg ]; then
-    >&2 echo "Replacing environment variables in server.cfg..."
-    # Create a temporary file
-    cp /config/server.cfg /config/server.cfg.tmp
+# Generate server.cfg from template with environment variables
+if [ -f /opt/cfx-server-data/server.cfg.template ]; then
+    >&2 echo "Generating server.cfg from template..."
     
-    # Use envsubst to replace all ${VAR} syntax with environment variables
-    # If envsubst is not available, use sed to replace common variables
+    # Use envsubst if available, otherwise fall back to sed
     if command -v envsubst > /dev/null 2>&1; then
-        envsubst < /config/server.cfg.tmp > /config/server.cfg
+        envsubst < /opt/cfx-server-data/server.cfg.template > /config/server.cfg
+        >&2 echo "✓ server.cfg generated from template using envsubst"
     else
-        # Fallback: manually replace known environment variables
-        sed -i "s/\${RCON_PASSWORD}/${RCON_PASSWORD}/g" /config/server.cfg
-        sed -i "s/\${SERVER_NAME}/${SERVER_NAME}/g" /config/server.cfg
-        sed -i "s/\${SERVER_DESC}/${SERVER_DESC}/g" /config/server.cfg
-        sed -i "s/\${MAX_CLIENTS}/${MAX_CLIENTS}/g" /config/server.cfg
-        sed -i "s/\${STEAM_API_KEY}/${STEAM_API_KEY}/g" /config/server.cfg
-        sed -i "s/\${MYSQL_CONNECTION}/${MYSQL_CONNECTION}/g" /config/server.cfg
-        sed -i "s/\${SERVER_TAGS}/${SERVER_TAGS}/g" /config/server.cfg
-        sed -i "s/\${LOCALE}/${LOCALE}/g" /config/server.cfg
+        # Fallback for systems without envsubst
+        >&2 echo "envsubst not found, using sed for variable replacement..."
+        cp /opt/cfx-server-data/server.cfg.template /config/server.cfg
+        
+        # Replace all ${VAR} variables with their values
+        for var in RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE; do
+            eval val=\$$var
+            if [ -n "$val" ]; then
+                # Escape special characters for sed
+                val_escaped=$(printf '%s\n' "$val" | sed -e 's/[\/&]/\\&/g')
+                sed -i "s/\${$var}/$val_escaped/g" /config/server.cfg
+            fi
+        done
+        >&2 echo "✓ server.cfg generated from template using sed"
     fi
+elif [ -f /config/server.cfg.template ]; then
+    >&2 echo "Generating server.cfg from /config/server.cfg.template..."
     
-    rm -f /config/server.cfg.tmp
-    >&2 echo "Environment variables replaced successfully"
+    if command -v envsubst > /dev/null 2>&1; then
+        envsubst < /config/server.cfg.template > /config/server.cfg
+        >&2 echo "✓ server.cfg generated from template using envsubst"
+    else
+        >&2 echo "envsubst not found, using sed for variable replacement..."
+        cp /config/server.cfg.template /config/server.cfg
+        
+        for var in RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE; do
+            eval val=\$$var
+            if [ -n "$val" ]; then
+                val_escaped=$(printf '%s\n' "$val" | sed -e 's/[\/&]/\\&/g')
+                sed -i "s/\${$var}/$val_escaped/g" /config/server.cfg
+            fi
+        done
+        >&2 echo "✓ server.cfg generated from template using sed"
+    fi
 fi
 
 if [ -z "$NO_ONESYNC" ]; then
