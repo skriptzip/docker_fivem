@@ -26,18 +26,34 @@ fi
 # Generate server.cfg from template with environment variables
 if [ -n "$TEMPLATE_FILE" ] && [ -f "$TEMPLATE_FILE" ]; then
     >&2 echo "Generating server.cfg from template..."
+    >&2 echo ""
+    
+    # Extract all ${VAR} patterns from template
+    >&2 echo "Found variables in template:"
+    VARS=$(grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' "$TEMPLATE_FILE" | sed 's/[${}]//g' | sort -u)
+    
+    for VAR_NAME in $VARS; do
+        VAR_VALUE=$(eval echo \$$VAR_NAME)
+        if [ -n "$VAR_VALUE" ]; then
+            >&2 echo "  ✓ \${$VAR_NAME} = $VAR_VALUE"
+        else
+            >&2 echo "  ✗ \${$VAR_NAME} = (not set)"
+        fi
+    done
+    
+    >&2 echo ""
+    >&2 echo "Replacing variables in server.cfg..."
     cp "$TEMPLATE_FILE" /config/server.cfg
     
-    # Build sed command dynamically for all environment variables
-    >&2 echo "Replacing all environment variables..."
-    
-    # Create temp sed script that handles all env variables
-    printenv | while IFS='=' read -r VAR_NAME VAR_VALUE; do
-        if [ -n "$VAR_NAME" ]; then
+    # Replace each variable
+    for VAR_NAME in $VARS; do
+        VAR_VALUE=$(eval echo \$$VAR_NAME)
+        if [ -n "$VAR_VALUE" ]; then
             # Escape special characters in the value for sed
             ESCAPED_VALUE=$(printf '%s\n' "$VAR_VALUE" | sed -e 's/[\&/]/\\&/g')
             # Replace the variable in the config
             sed -i "s|\${$VAR_NAME}|$ESCAPED_VALUE|g" /config/server.cfg
+            >&2 echo "  Replaced \${$VAR_NAME}"
         fi
     done
 
