@@ -49,11 +49,11 @@ if [ -n "$TEMPLATE_FILE" ] && [ -f "$TEMPLATE_FILE" ]; then
     for VAR_NAME in $VARS; do
         VAR_VALUE=$(printenv "$VAR_NAME")
         if [ -n "$VAR_VALUE" ]; then
-            # Escape special characters in the value for sed
-            ESCAPED_VALUE=$(printf '%s\n' "$VAR_VALUE" | sed -e 's/[\&/]/\\&/g')
-            >&2 echo "DEBUG: sed -i s|\${$VAR_NAME}|$ESCAPED_VALUE|g"
-            # Replace the variable in the config
-            sed -i "s|\${$VAR_NAME}|$ESCAPED_VALUE|g" /config/server.cfg
+            # Escape special characters in the value for sed (including |)
+            ESCAPED_VALUE=$(printf '%s\n' "$VAR_VALUE" | sed -e 's/[#\&/|]/\\&/g')
+            >&2 echo "DEBUG: sed -i s#\${$VAR_NAME}#$ESCAPED_VALUE#g"
+            # Replace the variable in the config using # as delimiter
+            sed -i "s#\${$VAR_NAME}#$ESCAPED_VALUE#g" /config/server.cfg
             >&2 echo "  Replaced \${$VAR_NAME}"
         fi
     done
