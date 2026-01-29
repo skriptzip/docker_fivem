@@ -10,48 +10,45 @@ if ! find . -mindepth 1 | read -r; then
     >&2 echo "Default configs created"
 fi
 
+# Determine which template to use (project template has priority)
+TEMPLATE_FILE=""
+if [ -f /config/server.cfg.template ]; then
+    TEMPLATE_FILE="/config/server.cfg.template"
+    >&2 echo "Using project template: /config/server.cfg.template"
+elif [ -f /opt/cfx-server-data/server.cfg.template ]; then
+    TEMPLATE_FILE="/opt/cfx-server-data/server.cfg.template"
+    >&2 echo "Using image template: /opt/cfx-server-data/server.cfg.template"
+else
+    >&2 echo "ERROR: No server.cfg.template found!"
+    exit 1
+fi
+
 # Generate server.cfg from template with environment variables
-if [ -f /opt/cfx-server-data/server.cfg.template ]; then
+if [ -n "$TEMPLATE_FILE" ] && [ -f "$TEMPLATE_FILE" ]; then
     >&2 echo "Generating server.cfg from template..."
+    >&2 echo "Environment variables:"
+    >&2 echo "  RCON_PASSWORD=${RCON_PASSWORD}"
+    >&2 echo "  SERVER_NAME=${SERVER_NAME}"
+    >&2 echo "  SERVER_DESC=${SERVER_DESC}"
+    >&2 echo "  SERVER_TAGS=${SERVER_TAGS}"
+    >&2 echo "  MAX_CLIENTS=${MAX_CLIENTS}"
+    >&2 echo "  STEAM_API_KEY=${STEAM_API_KEY}"
+    >&2 echo "  MYSQL_CONNECTION=${MYSQL_CONNECTION}"
+    >&2 echo "  LOCALE=${LOCALE}"
     
-    # Use envsubst if available, otherwise fall back to sed
-    if command -v envsubst > /dev/null 2>&1; then
-        envsubst < /opt/cfx-server-data/server.cfg.template > /config/server.cfg
-        >&2 echo "✓ server.cfg generated from template using envsubst"
-    else
-        # Fallback for systems without envsubst
-        >&2 echo "envsubst not found, using sed for variable replacement..."
-        cp /opt/cfx-server-data/server.cfg.template /config/server.cfg
-        
-        # Replace all ${VAR} variables with their values
-        for var in RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE; do
-            eval val=\$$var
-            if [ -n "$val" ]; then
-                # Escape special characters for sed
-                val_escaped=$(printf '%s\n' "$val" | sed -e 's/[\/&]/\\&/g')
-                sed -i "s/\${$var}/$val_escaped/g" /config/server.cfg
-            fi
-        done
-        >&2 echo "✓ server.cfg generated from template using sed"
-    fi
-elif [ -f /config/server.cfg.template ]; then
-    >&2 echo "Generating server.cfg from /config/server.cfg.template..."
+    export RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE
     
     if command -v envsubst > /dev/null 2>&1; then
-        envsubst < /config/server.cfg.template > /config/server.cfg
-        >&2 echo "✓ server.cfg generated from template using envsubst"
+        envsubst < "$TEMPLATE_FILE" > /config/server.cfg
+        if [ $? -eq 0 ]; then
+            >&2 echo "✓ server.cfg generated successfully using envsubst"
+        else
+            >&2 echo "ERROR: envsubst failed"
+            exit 1
+        fi
     else
-        >&2 echo "envsubst not found, using sed for variable replacement..."
-        cp /config/server.cfg.template /config/server.cfg
-        
-        for var in RCON_PASSWORD SERVER_NAME SERVER_DESC SERVER_TAGS MAX_CLIENTS STEAM_API_KEY MYSQL_CONNECTION LOCALE; do
-            eval val=\$$var
-            if [ -n "$val" ]; then
-                val_escaped=$(printf '%s\n' "$val" | sed -e 's/[\/&]/\\&/g')
-                sed -i "s/\${$var}/$val_escaped/g" /config/server.cfg
-            fi
-        done
-        >&2 echo "✓ server.cfg generated from template using sed"
+        >&2 echo "ERROR: envsubst not found - cannot generate server.cfg"
+        exit 1
     fi
 fi
 

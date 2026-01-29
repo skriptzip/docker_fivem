@@ -46,8 +46,8 @@ ARG FIVEM_VER
 ARG FIVEM_NUM
 ARG DATA_VER
 
-# Install Node.js in the final stage
-RUN apk add --no-cache nodejs
+# Install Node.js and envsubst in the final stage
+RUN apk add --no-cache nodejs gettext
 
 LABEL org.opencontainers.image.authors="skriptzip <info@skript.zip>" \
       org.opencontainers.image.title="FiveM" \
