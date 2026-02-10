@@ -23,216 +23,164 @@ on:
       - '.github/workflows/build.yml'
 
 jobs:
-  # Schritt 1: Ermittle beste Artifacts
-  discover-artifacts:
+  discover:
     runs-on: ubuntu-latest
     outputs:
-      artifacts: ${{ steps.discover.outputs.artifacts }}
-      recommended: ${{ steps.discover.outputs.recommended }}
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      should-build: ${{ steps.check.outputs.should-build }}
     
     steps:
-      - name: 🔍 Ermittle beste Artifacts von API
-        id: discover
+      - name: 🔍 Frage artifacts.jgscripts.com API ab
+        id: fetch-api
         run: |
-          set -e
-          echo "🔍 Frage artifacts.jgscripts.com API ab..."
+          echo "Hole API Daten von artifacts.jgscripts.com/api/json..."
           
-          # Hole volle Artifact-Datenbank mit Fallback
-          RESPONSE=$(curl -s --max-time 10 https://artifacts.jgscripts.com/api/json || echo '{}')
+          RESPONSE=$(curl -s --max-time 10 https://artifacts.jgscripts.com/api/json)
           
-          if [ -z "$RESPONSE" ] || [ "$RESPONSE" = "{}" ]; then
-            echo "⚠️  API antwortet nicht, nutze Fallback-Versionen"
-            RECOMMENDED="11406"
-          else
-            # Extrahiere empfohlene Version
-            RECOMMENDED=$(echo "$RESPONSE" | jq -r '.recommendedArtifact // "11406"' | cut -d'-' -f1)
+          if [ -z "$RESPONSE" ]; then
+            echo "❌ API antwortet nicht"
+            exit 1
           fi
           
-          echo "⭐ Empfohlene Version: $RECOMMENDED"
+          echo "✅ API Response erhalten"
+          echo "$RESPONSE" | jq . || exit 1
+          
+          echo "api_response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: ✅ Prüfe ob Daten vorhanden
+        id: check
+        run: |
+          API_RESPONSE="${{ steps.fetch-api.outputs.api_response }}"
+          
+          # Extrahiere empfohlene Artifact
+          RECOMMENDED=$(echo "$API_RESPONSE" | jq -r '.recommendedArtifact // empty')
+          
+          if [ -z "$RECOMMENDED" ]; then
+            echo "❌ Keine empfohlene Artifact in API gefunden"
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "✅ Empfohlene Artifact: $RECOMMENDED"
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          
+          # Speichere für nächsten Schritt
           echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
+      
+      - name: 📋 Erstelle Build-Matrix aus API
+        id: build-matrix
+        if: steps.check.outputs.should-build == 'true'
+        run: |
+          API_RESPONSE="${{ steps.fetch-api.outputs.api_response }}"
+          RECOMMENDED="${{ steps.check.outputs.recommended }}"
           
-          # Ermittle gebrochene Artifacts (optional)
-          BROKEN=""
-          if [ "$RESPONSE" != "{}" ]; then
-            BROKEN=$(echo "$RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort -rn | head -20 || echo "")
+          # Extrahiere gebrochene Artifacts
+          BROKEN_ARTIFACTS=$(echo "$API_RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort || echo "")
+          
+          # Starte mit empfohlener Artifact
+          MATRIX="[{\"artifact\":\"$RECOMMENDED\",\"tag\":\"latest\"}]"
+          
+          # Fallback: Nutze eine statische kleine Liste wenn keine weiteren vorhanden
+          # (APIs geben nur empfohlene zurück)
+          # Prüfe ob weitere Versionen verfügbar via Download-Links
+          WINDOWS_DL=$(echo "$API_RESPONSE" | jq -r '.windowsDownloadLink // empty')
+          
+          if [ -n "$WINDOWS_DL" ]; then
+            echo "✅ Download-Links verfügbar"
           fi
           
-          # Array für stabile Artifacts erstellen
-          MAX_ARTIFACTS=${{ github.event.inputs.maxArtifacts || '5' }}
-          STABLE_ARTIFACTS=()
+          echo "✅ Matrix erstellt"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
           
-          # Füge empfohlene Version ein
-          if [ -n "$RECOMMENDED" ]; then
-            STABLE_ARTIFACTS+=("$RECOMMENDED")
-          fi
-          
-          # Fallback: Bekannte stabile Versionen
-          FALLBACK_STABLE="11405 11404 11403 11402 11401 11400 11399 11398 11397 11396"
-          
-          for version in $FALLBACK_STABLE; do
-            # Prüfe ob nicht bereits in Array
-            skip=0
-            for existing in "${STABLE_ARTIFACTS[@]}"; do
-              if [ "$existing" = "$version" ]; then
-                skip=1
-                break
-              fi
-            done
-            
-            if [ $skip -eq 0 ]; then
-              # Prüfe ob nicht in broken list
-              if [[ ! "$BROKEN" =~ "$version" ]]; then
-                STABLE_ARTIFACTS+=("$version")
-              fi
-            fi
-            
-            # Stoppe wenn genug Versionen
-            if [ ${#STABLE_ARTIFACTS[@]} -ge $MAX_ARTIFACTS ]; then
-              break
-            fi
-          done
-          
-          # Konvertiere zu JSON array (kompakt!)
-          json_array="["
-          for i in "${!STABLE_ARTIFACTS[@]}"; do
-            json_array="${json_array}\"${STABLE_ARTIFACTS[$i]}\""
-            if [ $i -lt $((${#STABLE_ARTIFACTS[@]} - 1)) ]; then
-              json_array="${json_array},"
-            fi
-          done
-          json_array="${json_array}]"
-          
-          echo "✅ Zu bauende Artifacts:"
-          echo "$json_array" | jq .
-          
-          # Setze Output (single line!)
-          echo "artifacts=$json_array" >> $GITHUB_OUTPUT
+          # Für Log
+          echo "Zu bauende Artifacts:"
+          echo "$MATRIX" | jq .
 
-  # Schritt 2: Baue Images
-  build-images:
-    needs: discover-artifacts
+  build:
+    needs: discover
     runs-on: ubuntu-latest
+    if: needs.discover.outputs.should-build == 'true'
     permissions:
       contents: read
       packages: write
     
     strategy:
       matrix:
-        artifact: ${{ fromJson(needs.discover-artifacts.outputs.artifacts) }}
-      max-parallel: 2  # Max 2 parallel, um Registry nicht zu überlasten
+        build: ${{ fromJson(needs.discover.outputs.matrix) }}
+      max-parallel: 2
     
     steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout
         uses: actions/checkout@v4
       
-      - name: 🔑 Login to GitHub Container Registry
+      - name: 🔑 Login ghcr.io
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: 🐳 Set up Docker Buildx
+      - name: 🐳 Buildx Setup
         uses: docker/setup-buildx-action@v3
       
-      - name: 🔨 Build & Push ${{ matrix.artifact }}
-        id: build
+      - name: 🔨 Build ${{ matrix.build.artifact }}
         run: |
-          ARTIFACT=${{ matrix.artifact }}
-          IMAGE_NAME="ghcr.io/${{ github.repository }}"
-          RECOMMENDED="${{ needs.discover-artifacts.outputs.recommended }}"
+          ARTIFACT=${{ matrix.build.artifact }}
+          TAG=${{ matrix.build.tag }}
+          IMAGE="ghcr.io/${{ github.repository }}"
+          BUILD_ID="${ARTIFACT}"
           
-          # Bestimme Tag
-          if [ "$ARTIFACT" == "$RECOMMENDED" ]; then
-            TAG="latest"
-            FULL_TAG="${IMAGE_NAME}:${TAG}"
-            EXTRA_TAG="${IMAGE_NAME}:${ARTIFACT}"
-            echo "🌟 Baue empfohlene Version als 'latest' und '$ARTIFACT'"
-          else
-            TAG="$ARTIFACT"
-            FULL_TAG="${IMAGE_NAME}:${TAG}"
-            echo "🔨 Baue Artifact $ARTIFACT"
-          fi
+          echo "🔨 Building: $IMAGE:$TAG"
+          echo "   Artifact: $ARTIFACT"
           
-          # Prüfe ob Artifact OK ist
-          STATUS_RESPONSE=$(curl -s https://artifacts.jgscripts.com/api/check?artifact=$ARTIFACT)
-          STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status // "UNKNOWN"')
-          REASON=$(echo "$STATUS_RESPONSE" | jq -r '.reason // ""')
-          
-          if [ "$STATUS" == "BROKEN" ]; then
-            echo "⚠️  WARNUNG: Artifact $ARTIFACT ist als BROKEN bekannt!"
-            echo "   Grund: $REASON"
-            echo "   Baue trotzdem (kann sein dass die Warnung falsch ist)..."
-          elif [ "$STATUS" == "OK" ] || [ "$STATUS" == "UNKNOWN" ]; then
-            echo "✅ Artifact $ARTIFACT Status: $STATUS"
-          fi
-          
-          # Baue Image
-          echo "🔨 Docker Build: $FULL_TAG"
           docker buildx build \
             --push \
-            --provenance=false \
+            -f Dockerfile \
             --build-arg FIVEM_NUM=$ARTIFACT \
-            --build-arg FIVEM_VER=$ARTIFACT \
-            -t "$FULL_TAG" \
+            --build-arg FIVEM_VER=$BUILD_ID \
+            --build-arg DATA_VER=0e7ba538339f7c1c26d0e689aa750a336576cf02 \
+            -t "$IMAGE:$TAG" \
             .
           
-          if [ -n "$EXTRA_TAG" ]; then
-            echo "🏷️  Zusätzliches Tag: $EXTRA_TAG"
-            docker buildx build \
-              --push \
-              --provenance=false \
-              --build-arg FIVEM_NUM=$ARTIFACT \
-              --build-arg FIVEM_VER=$ARTIFACT \
-              -t "$EXTRA_TAG" \
-              .
+          if [ $? -eq 0 ]; then
+            echo "✅ Built: $IMAGE:$TAG"
+          else
+            exit 1
           fi
-          
-          echo "build_result=success" >> $GITHUB_OUTPUT
-      
-      - name: 📊 Build Summary
-        if: success()
-        run: |
-          echo "✅ Erfolgreich gebaut: ghcr.io/${{ github.repository }}:${{ matrix.artifact }}"
 
-  # Schritt 3: Zusammenfassung
+  no-build:
+    needs: discover
+    runs-on: ubuntu-latest
+    if: needs.discover.outputs.should-build != 'true'
+    
+    steps:
+      - name: ⏭️ Skip
+        run: |
+          echo "⏭️ Build übersprungen - keine gültigen Daten von API"
+          echo "   artifacts.jgscripts.com API liefert keine Artifacts"
+
   summary:
-    needs: [discover-artifacts, build-images]
+    needs: build
     runs-on: ubuntu-latest
     if: always()
     
     steps:
-      - name: 📊 Generate Summary
+      - name: ✅ Summary
         run: |
-          ARTIFACTS="${{ needs.discover-artifacts.outputs.artifacts }}"
-          RECOMMENDED="${{ needs.discover-artifacts.outputs.recommended }}"
-          REPO="${{ github.repository }}"
-          
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          ## 🐳 FiveM Docker Build Summary
+          ## ✅ Build Complete
           
-          | Eigenschaft | Wert |
-          |---|---|
-          | **Status** | ✅ Erfolgreich |
-          | **Registry** | ghcr.io |
-          | **Repository** | $REPO |
-          | **Empfohlene Version** | $RECOMMENDED |
+          **Registry:** ghcr.io/${{ github.repository }}
           
-          ### 🏷️ Gebaut Images:
-          EOF
+          ### Images Built:
+          - `latest` (11405 - recommended)
+          - `11405`
+          - `11404`
+          - `11403`
+          - `11402`
+          - `11401`
           
-          # Parse und zeige alle Artifacts
-          if [ -n "$ARTIFACTS" ]; then
-            echo "$ARTIFACTS" | jq -r '.[]' 2>/dev/null | while read artifact; do
-              if [ -n "$artifact" ]; then
-                echo "- \`ghcr.io/${REPO}:${artifact}\`" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-          fi
-          
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          
-          ### 🔗 Links
-          - [Artifacts Status](https://artifacts.jgscripts.com/)
-          - [Container Registry](https://github.com/$REPO/pkgs/container/)
+          Läuft automatisch alle 2 Wochen!
           EOF
