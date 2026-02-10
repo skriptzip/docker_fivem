@@ -72,10 +72,11 @@ jobs:
             # Fallback: Nutze statische Artifact-Liste
             echo "⚠️ Nutze Fallback-Artifact-Liste"
             ARTIFACTS="11405-example
-11404-example
-11403-example"
+          11404-example
+          11403-example"
             # Für Fallback nutzen wir nur die Versionsnummern
             MATRIX='[{"artifact":"11405","fullver":"11405-example","tag":"latest"},{"artifact":"11404","fullver":"11404-example","tag":"11404"},{"artifact":"11403","fullver":"11403-example","tag":"11403"}]'
+            COUNT=3
           else
             ARTIFACTS="${{ steps.fetch-artifacts.outputs.artifacts }}"
             
