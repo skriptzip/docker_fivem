@@ -69,7 +69,7 @@ _Note: Interactive and pseudo-tty options (`-ti`) are required to prevent contai
 
 ## 🔄 Automatic Builds & Versions
 
-- **Scheduled Builds**: Runs automatically every 2 weeks on Sundays at 02:00 UTC
+- **Scheduled Builds**: Runs automatically every week on Sundays at 02:00 UTC
 - **Automatic Updates**: Fetches the latest recommended FiveM version from `artifacts.jgscripts.com`
 
 ### Available Tags
