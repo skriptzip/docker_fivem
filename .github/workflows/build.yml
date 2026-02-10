@@ -45,6 +45,7 @@ jobs:
           fi
           
           # Extrahiere Artifact-Versionen (Format: XXXXX-hash)
+          # Regex erlaubt 4-6 Ziffern für Versionsnummer (z.B. 11532, 18443)
           ARTIFACTS=$(echo "$ARTIFACTS_HTML" | grep -oE '[0-9]{4,6}-[a-f0-9]{40}' | sort -rn | uniq | head -10)
           
           if [ -z "$ARTIFACTS" ]; then
@@ -70,10 +71,11 @@ jobs:
           
           if [ "$USE_FALLBACK" = "true" ]; then
             # Fallback: Nutze statische Artifact-Liste basierend auf Dockerfile-Defaults
-            # Verwende realistische Versionsnummern mit Platzhalter-Hashes
+            # HINWEIS: Hashes sind Platzhalter und werden nur verwendet wenn runtime.fivem.net
+            # nicht erreichbar ist. Diese sollten durch echte Versionen aus dem Dockerfile ersetzt werden.
             echo "⚠️ Nutze Fallback-Artifact-Liste (basierend auf Dockerfile-Defaults)"
             
-            # Erstelle Fallback-Liste mit realistischen Versionen
+            # Erstelle Fallback-Liste mit realistischen Versionen (basierend auf Dockerfile v18443)
             FALLBACK_VERSIONS="18443-746f079d418d6a05ae5fe78268bc1b4fd66ce738
           18442-746f079d418d6a05ae5fe78268bc1b4fd66ce737
           18441-746f079d418d6a05ae5fe78268bc1b4fd66ce736
@@ -198,18 +200,26 @@ jobs:
           echo "   Artifact: $ARTIFACT"
           echo "   Full Version: $FULL_VER"
           
+          # Build tags: always include the specified TAG, plus ARTIFACT if different
+          BUILD_TAGS="-t $IMAGE:$TAG"
+          if [ "$TAG" != "$ARTIFACT" ]; then
+            BUILD_TAGS="$BUILD_TAGS -t $IMAGE:$ARTIFACT"
+          fi
+          
           docker buildx build \
             --push \
             -f Dockerfile \
             --build-arg FIVEM_NUM=$ARTIFACT \
             --build-arg FIVEM_VER=$FULL_VER \
             --build-arg DATA_VER=0e7ba538339f7c1c26d0e689aa750a336576cf02 \
-            -t "$IMAGE:$TAG" \
-            -t "$IMAGE:$ARTIFACT" \
+            $BUILD_TAGS \
             .
           
           if [ $? -eq 0 ]; then
             echo "✅ Built: $IMAGE:$TAG"
+            if [ "$TAG" != "$ARTIFACT" ]; then
+              echo "✅ Also tagged as: $IMAGE:$ARTIFACT"
+            fi
           else
             exit 1
           fi
