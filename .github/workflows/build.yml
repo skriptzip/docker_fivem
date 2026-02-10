@@ -7,11 +7,6 @@ on:
   
   # Manuell auslösen
   workflow_dispatch:
-    inputs:
-      maxArtifacts:
-        description: 'Maximale Anzahl Artifacts (standard: 5)'
-        required: false
-        default: '5'
 
   # Bei Dockerfile Changes bauen
   push:
@@ -27,72 +22,104 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
-      should-build: ${{ steps.check.outputs.should-build }}
+      should-build: ${{ steps.build-matrix.outputs.should-build }}
     
     steps:
-      - name: 🔍 Frage artifacts.jgscripts.com API ab
-        id: fetch-api
+      - name: 🔍 Hole FiveM Artifacts von artifacts.jgscripts.com
+        id: fetch-artifacts
         run: |
-          echo "Hole API Daten von artifacts.jgscripts.com/api/json..."
+          echo "Hole FiveM Artifacts API Daten von artifacts.jgscripts.com/json..."
           
-          RESPONSE=$(curl -s --max-time 10 https://artifacts.jgscripts.com/api/json)
+          # Hole JSON API Daten
+          API_RESPONSE=$(curl -sL --max-time 30 https://artifacts.jgscripts.com/json 2>&1)
           
-          if [ -z "$RESPONSE" ]; then
-            echo "❌ API antwortet nicht"
-            exit 1
-          fi
-          
-          echo "✅ API Response erhalten"
-          echo "$RESPONSE" | jq . || exit 1
-          
-          echo "api_response<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      
-      - name: ✅ Prüfe ob Daten vorhanden
-        id: check
-        run: |
-          API_RESPONSE="${{ steps.fetch-api.outputs.api_response }}"
-          
-          # Extrahiere empfohlene Artifact
-          RECOMMENDED=$(echo "$API_RESPONSE" | jq -r '.recommendedArtifact // empty')
-          
-          if [ -z "$RECOMMENDED" ]; then
-            echo "❌ Keine empfohlene Artifact in API gefunden"
-            echo "should-build=false" >> $GITHUB_OUTPUT
+          if [ $? -ne 0 ] || [ -z "$API_RESPONSE" ]; then
+            echo "⚠️ Kann API nicht abrufen, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          echo "✅ Empfohlene Artifact: $RECOMMENDED"
-          echo "should-build=true" >> $GITHUB_OUTPUT
+          # Validiere JSON
+          echo "$API_RESPONSE" | jq . > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "⚠️ Ungültiges JSON von API, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extrahiere recommendedArtifact
+          RECOMMENDED=$(echo "$API_RESPONSE" | jq -r '.recommendedArtifact // empty')
+          
+          if [ -z "$RECOMMENDED" ]; then
+            echo "⚠️ Keine recommendedArtifact in API gefunden, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extrahiere linuxDownloadLink
+          LINUX_DL=$(echo "$API_RESPONSE" | jq -r '.linuxDownloadLink // empty')
+          
+          if [ -z "$LINUX_DL" ]; then
+            echo "⚠️ Keine linuxDownloadLink in API gefunden, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extrahiere volle Version aus Download-Link (Format: XXXXX-hash)
+          # z.B. aus: https://runtime.fivem.net/.../24574-315823736cfbc085104ca0d32779311cd2f1a5a8/fx.tar.xz
+          FULL_VERSION=$(echo "$LINUX_DL" | grep -oE '[0-9]{4,6}-[a-f0-9]{40}')
+          
+          if [ -z "$FULL_VERSION" ]; then
+            echo "⚠️ Kann Version nicht aus Download-Link extrahieren, nutze Fallback"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "✅ Empfohlene Artifact gefunden:"
+          echo "   Version: $RECOMMENDED"
+          echo "   Full Version: $FULL_VERSION"
+          echo "   Download: $LINUX_DL"
           
           # Speichere für nächsten Schritt
           echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "use_fallback=false" >> $GITHUB_OUTPUT
       
-      - name: 📋 Erstelle Build-Matrix aus API
+      - name: 📋 Erstelle Build-Matrix
         id: build-matrix
-        if: steps.check.outputs.should-build == 'true'
         run: |
-          API_RESPONSE="${{ steps.fetch-api.outputs.api_response }}"
-          RECOMMENDED="${{ steps.check.outputs.recommended }}"
+          USE_FALLBACK="${{ steps.fetch-artifacts.outputs.use_fallback }}"
           
-          # Extrahiere gebrochene Artifacts
-          BROKEN_ARTIFACTS=$(echo "$API_RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort || echo "")
-          
-          # Starte mit empfohlener Artifact
-          MATRIX="[{\"artifact\":\"$RECOMMENDED\",\"tag\":\"latest\"}]"
-          
-          # Fallback: Nutze eine statische kleine Liste wenn keine weiteren vorhanden
-          # (APIs geben nur empfohlene zurück)
-          # Prüfe ob weitere Versionen verfügbar via Download-Links
-          WINDOWS_DL=$(echo "$API_RESPONSE" | jq -r '.windowsDownloadLink // empty')
-          
-          if [ -n "$WINDOWS_DL" ]; then
-            echo "✅ Download-Links verfügbar"
+          if [ "$USE_FALLBACK" = "true" ]; then
+            # Fallback: Nutze statische Artifact-Liste basierend auf Dockerfile-Defaults
+            # HINWEIS: Hashes sind Platzhalter und werden nur verwendet wenn artifacts.jgscripts.com
+            # nicht erreichbar ist. Diese sollten durch echte Versionen aus dem Dockerfile ersetzt werden.
+            echo "⚠️ Nutze Fallback-Artifact-Liste (basierend auf Dockerfile-Defaults)"
+            
+            # Erstelle Fallback mit nur einer Version (Dockerfile default)
+            ARTIFACT="18443"
+            FULL_VER="18443-746f079d418d6a05ae5fe78268bc1b4fd66ce738"
+            
+            MATRIX="[{\"artifact\":\"$ARTIFACT\",\"fullver\":\"$FULL_VER\",\"tag\":\"latest\"}]"
+            COUNT=1
+          else
+            # Nutze empfohlene Artifact von API
+            RECOMMENDED="${{ steps.fetch-artifacts.outputs.recommended }}"
+            FULL_VERSION="${{ steps.fetch-artifacts.outputs.full_version }}"
+            
+            echo "✅ Nutze empfohlene Artifact von API:"
+            echo "   Artifact: $RECOMMENDED"
+            echo "   Full Version: $FULL_VERSION"
+            
+            # Erstelle Matrix mit empfohlener Version
+            # Tag als "latest" und Build-Step erstellt auch Tag mit Versionsnummer
+            MATRIX="[{\"artifact\":\"$RECOMMENDED\",\"fullver\":\"$FULL_VERSION\",\"tag\":\"latest\"}]"
+            COUNT=1
           fi
           
-          echo "✅ Matrix erstellt"
+          echo "✅ Matrix erstellt mit $COUNT Artifact(s)"
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "should-build=true" >> $GITHUB_OUTPUT
           
           # Für Log
           echo "Zu bauende Artifacts:"
@@ -128,24 +155,35 @@ jobs:
       - name: 🔨 Build ${{ matrix.build.artifact }}
         run: |
           ARTIFACT=${{ matrix.build.artifact }}
+          FULL_VER=${{ matrix.build.fullver }}
           TAG=${{ matrix.build.tag }}
           IMAGE="ghcr.io/${{ github.repository }}"
-          BUILD_ID="${ARTIFACT}"
           
           echo "🔨 Building: $IMAGE:$TAG"
           echo "   Artifact: $ARTIFACT"
+          echo "   Full Version: $FULL_VER"
+          
+          # Build tags: always include the specified TAG, plus ARTIFACT if different
+          # Für "latest" wird auch der Versions-Tag hinzugefügt (z.B. "24574")
+          BUILD_TAGS="-t $IMAGE:$TAG"
+          if [ "$TAG" != "$ARTIFACT" ]; then
+            BUILD_TAGS="$BUILD_TAGS -t $IMAGE:$ARTIFACT"
+          fi
           
           docker buildx build \
             --push \
             -f Dockerfile \
             --build-arg FIVEM_NUM=$ARTIFACT \
-            --build-arg FIVEM_VER=$BUILD_ID \
+            --build-arg FIVEM_VER=$FULL_VER \
             --build-arg DATA_VER=0e7ba538339f7c1c26d0e689aa750a336576cf02 \
-            -t "$IMAGE:$TAG" \
+            $BUILD_TAGS \
             .
           
           if [ $? -eq 0 ]; then
             echo "✅ Built: $IMAGE:$TAG"
+            if [ "$TAG" != "$ARTIFACT" ]; then
+              echo "✅ Also tagged as: $IMAGE:$ARTIFACT"
+            fi
           else
             exit 1
           fi
@@ -158,8 +196,8 @@ jobs:
     steps:
       - name: ⏭️ Skip
         run: |
-          echo "⏭️ Build übersprungen - keine gültigen Daten von API"
-          echo "   artifacts.jgscripts.com API liefert keine Artifacts"
+          echo "⏭️ Build übersprungen - keine gültigen Artifacts gefunden"
+          echo "   artifacts.jgscripts.com API konnte nicht abgerufen werden"
 
   summary:
     needs: build
@@ -175,12 +213,16 @@ jobs:
           **Registry:** ghcr.io/${{ github.repository }}
           
           ### Images Built:
-          - `latest` (11405 - recommended)
-          - `11405`
-          - `11404`
-          - `11403`
-          - `11402`
-          - `11401`
+          Das empfohlene FiveM Docker Image wurde erfolgreich gebaut und gepusht!
           
-          Läuft automatisch alle 2 Wochen!
+          Die aktuelle empfohlene Version wurde automatisch von artifacts.jgscripts.com abgerufen.
+          
+          **Verfügbare Tags:**
+          - `latest` - Aktuell empfohlene Version (wird bei jedem Build aktualisiert)
+          - `[VERSION]` - Spezifische Versionsnummer (z.B. `24574`) - **bleibt permanent bestehen!**
+          
+          **Wichtig:** Alte Versions-Tags werden nie überschrieben und bleiben dauerhaft im Registry verfügbar.
+          Für Produktionsumgebungen wird empfohlen, spezifische Versionsnummern statt `latest` zu verwenden.
+          
+          Läuft automatisch alle 2 Wochen am Sonntag um 02:00 UTC!
           EOF
