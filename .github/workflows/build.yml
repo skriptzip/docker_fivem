@@ -1,0 +1,212 @@
+name: 🐳 Auto-Build FiveM Docker Images
+
+on:
+  schedule:
+    # Alle 2 Wochen am Sonntag 02:00 UTC
+    - cron: '0 2 * * 0'
+  
+  # Manuell auslösen
+  workflow_dispatch:
+    inputs:
+      maxArtifacts:
+        description: 'Maximale Anzahl Artifacts (standard: 5)'
+        required: false
+        default: '5'
+
+  # Bei Dockerfile Changes bauen
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'config/**'
+      - '.github/workflows/build.yml'
+
+jobs:
+  # Schritt 1: Ermittle beste Artifacts
+  discover-artifacts:
+    runs-on: ubuntu-latest
+    outputs:
+      artifacts: ${{ steps.discover.outputs.artifacts }}
+      recommended: ${{ steps.discover.outputs.recommended }}
+    
+    steps:
+      - name: 🔍 Ermittle beste Artifacts von API
+        id: discover
+        run: |
+          echo "🔍 Frage artifacts.jgscripts.com API ab..."
+          
+          # Hole volle Artifact-Datenbank
+          RESPONSE=$(curl -s https://artifacts.jgscripts.com/api/json)
+          
+          # Extrahiere empfohlene Version
+          RECOMMENDED=$(echo "$RESPONSE" | jq -r '.recommendedArtifact // "0"' | cut -d'-' -f1)
+          echo "⭐ Empfohlene Version: $RECOMMENDED"
+          echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
+          
+          # Ermittle gebrochene Artifacts
+          BROKEN=$(echo "$RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort -rn | head -20 || echo "")
+          
+          # Array für stabile Artifacts erstellen
+          MAX_ARTIFACTS=${{ github.event.inputs.maxArtifacts || '5' }}
+          STABLE_ARTIFACTS=()
+          
+          # Füge empfohlene Version ein
+          if [ -n "$RECOMMENDED" ] && [ "$RECOMMENDED" != "0" ]; then
+            STABLE_ARTIFACTS+=("$RECOMMENDED")
+          fi
+          
+          # Fallback: Nutze bekannte stabile Versionen (wenn RECOMMENDED nicht verfügbar)
+          # Diese sind empirisch bekannt als stabil
+          FALLBACK_STABLE="11406 11405 11404 11403 11402 11401 11400 11399 11398 11397"
+          
+          # Added fallback versions
+          for version in $FALLBACK_STABLE; do
+            # Prüfe ob nicht bereits in Array
+            if [[ ! " ${STABLE_ARTIFACTS[@]} " =~ " ${version} " ]]; then
+              # Prüfe ob nicht in broken list
+              if [[ ! "$BROKEN" =~ "$version" ]]; then
+                STABLE_ARTIFACTS+=("$version")
+              fi
+            fi
+            
+            # Stoppe wenn genug Versionen
+            if [ ${#STABLE_ARTIFACTS[@]} -ge $MAX_ARTIFACTS ]; then
+              break
+            fi
+          done
+          
+          # Konvertiere zu JSON array
+          ARTIFACTS_JSON=$(printf '%s\n' "${STABLE_ARTIFACTS[@]}" | jq -R . | jq -s .)
+          
+          echo "✅ Zu bauende Artifacts:"
+          echo "$ARTIFACTS_JSON" | jq .
+          
+          # Setze Output
+          echo "artifacts=$ARTIFACTS_JSON" >> $GITHUB_OUTPUT
+          
+          # Printe für Logs
+          ARTIFACT_COUNT=$(echo "$ARTIFACTS_JSON" | jq 'length')
+          echo "📊 Insgesamt: $ARTIFACT_COUNT Artifacts"
+
+  # Schritt 2: Baue Images
+  build-images:
+    needs: discover-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        artifact: ${{ fromJson(needs.discover-artifacts.outputs.artifacts) }}
+      max-parallel: 2  # Max 2 parallel, um Registry nicht zu überlasten
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔑 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🔨 Build & Push ${{ matrix.artifact }}
+        id: build
+        run: |
+          ARTIFACT=${{ matrix.artifact }}
+          IMAGE_NAME="ghcr.io/${{ github.repository }}"
+          RECOMMENDED="${{ needs.discover-artifacts.outputs.recommended }}"
+          
+          # Bestimme Tag
+          if [ "$ARTIFACT" == "$RECOMMENDED" ]; then
+            TAG="latest"
+            FULL_TAG="${IMAGE_NAME}:${TAG}"
+            EXTRA_TAG="${IMAGE_NAME}:${ARTIFACT}"
+            echo "🌟 Baue empfohlene Version als 'latest' und '$ARTIFACT'"
+          else
+            TAG="$ARTIFACT"
+            FULL_TAG="${IMAGE_NAME}:${TAG}"
+            echo "🔨 Baue Artifact $ARTIFACT"
+          fi
+          
+          # Prüfe ob Artifact OK ist
+          STATUS_RESPONSE=$(curl -s https://artifacts.jgscripts.com/api/check?artifact=$ARTIFACT)
+          STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status // "UNKNOWN"')
+          REASON=$(echo "$STATUS_RESPONSE" | jq -r '.reason // ""')
+          
+          if [ "$STATUS" == "BROKEN" ]; then
+            echo "⚠️  WARNUNG: Artifact $ARTIFACT ist als BROKEN bekannt!"
+            echo "   Grund: $REASON"
+            echo "   Baue trotzdem (kann sein dass die Warnung falsch ist)..."
+          elif [ "$STATUS" == "OK" ] || [ "$STATUS" == "UNKNOWN" ]; then
+            echo "✅ Artifact $ARTIFACT Status: $STATUS"
+          fi
+          
+          # Baue Image
+          echo "🔨 Docker Build: $FULL_TAG"
+          docker buildx build \
+            --push \
+            --provenance=false \
+            --build-arg FIVEM_NUM=$ARTIFACT \
+            --build-arg FIVEM_VER=$ARTIFACT \
+            -t "$FULL_TAG" \
+            .
+          
+          if [ -n "$EXTRA_TAG" ]; then
+            echo "🏷️  Zusätzliches Tag: $EXTRA_TAG"
+            docker buildx build \
+              --push \
+              --provenance=false \
+              --build-arg FIVEM_NUM=$ARTIFACT \
+              --build-arg FIVEM_VER=$ARTIFACT \
+              -t "$EXTRA_TAG" \
+              .
+          fi
+          
+          echo "build_result=success" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Build Summary
+        if: success()
+        run: |
+          echo "✅ Erfolgreich gebaut: ghcr.io/${{ github.repository }}:${{ matrix.artifact }}"
+
+  # Schritt 3: Zusammenfassung
+  summary:
+    needs: [discover-artifacts, build-images]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🐳 FiveM Docker Build Summary
+          
+          | Eigenschaft | Wert |
+          |---|---|
+          | **Status** | ✅ Erfolgreich |
+          | **Registry** | ghcr.io |
+          | **Repository** | ${{ github.repository }} |
+          | **Zeitpunkt** | ${{ github.event_name }} |
+          | **Empfohlene Version** | ${{ needs.discover-artifacts.outputs.recommended }} |
+          
+          ### 🏷️ Gebaut Images:
+          EOF
+          
+          echo "${{ needs.discover-artifacts.outputs.artifacts }}" | jq -r '.[]' | while read artifact; do
+            echo "- \`ghcr.io/${{ github.repository }}:${artifact}\`" >> $GITHUB_STEP_SUMMARY
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links:
+          
+          - [Artifacts Status](https://artifacts.jgscripts.com/)
+          - [Container Registry](https://github.com/orgs/${{ github.repository_owner }}/packages)
+          " >> $GITHUB_STEP_SUMMARY
+          # z.B. SSH, webhook, kubernetes, etc.

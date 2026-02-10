@@ -9,3 +9,19 @@
 config/.git*
 config/node_modules/
 config/*.log
+
+# Ignoriere Build-Skripte, Dokumentation und Dev-Tools
+build-*.ps1
+test-image.ps1
+favorites.txt
+BUILD_GUIDE.md
+SETUP.md
+.github/
+.gitignore
+.env*
+.git/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
