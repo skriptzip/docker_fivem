@@ -138,8 +138,30 @@ This repository uses GitHub Actions to automatically build and publish Docker im
 
 ### Available Tags
 
-- `ghcr.io/skriptzip/docker_fivem:latest` - Currently recommended FiveM version
-- `ghcr.io/skriptzip/docker_fivem:[VERSION]` - Specific FiveM version (e.g., `24574`)
+- `ghcr.io/skriptzip/docker_fivem:latest` - Currently recommended FiveM version (updates every 2 weeks)
+- `ghcr.io/skriptzip/docker_fivem:[VERSION]` - Specific FiveM version (e.g., `24574`, `24580`, etc.)
+
+**Important:** Version-specific tags are **permanent** and never overwritten. When a new version is released:
+- The `latest` tag is updated to point to the new version
+- Old version tags (e.g., `24574`) remain available in the registry
+- You can always pull a specific version using its version number
+
+**Example:**
+```bash
+# Always get the latest recommended version
+docker pull ghcr.io/skriptzip/docker_fivem:latest
+
+# Pin to a specific version (recommended for production)
+docker pull ghcr.io/skriptzip/docker_fivem:24574
+```
+
+### Version History
+
+Each automated build creates a new version-specific tag that persists indefinitely. This allows you to:
+- ✅ Pin your deployment to a known working version
+- ✅ Roll back to previous versions if needed
+- ✅ Test new versions before upgrading
+- ✅ Maintain multiple deployments on different versions
 
 ### Manual Workflow Trigger
 
@@ -148,6 +170,54 @@ To manually trigger a build:
 1. Go to the **Actions** tab in this repository
 2. Select **"🐳 Auto-Build FiveM Docker Images"** workflow
 3. Click **"Run workflow"**
+
+## 📌 Version Pinning Best Practices
+
+### For Production Environments
+
+**Recommended:** Always pin to a specific version number instead of using `latest`:
+
+```yaml
+# docker-compose.yml
+services:
+  fivem:
+    image: ghcr.io/skriptzip/docker_fivem:24574  # Pinned version
+    # ... rest of config
+```
+
+**Why?** This ensures:
+- Predictable deployments (no surprise updates)
+- Easy rollback if issues occur
+- Consistent behavior across all servers
+- Time to test new versions before upgrading
+
+### For Development/Testing
+
+You can use `latest` to automatically get the newest recommended version:
+
+```yaml
+# docker-compose.yml
+services:
+  fivem:
+    image: ghcr.io/skriptzip/docker_fivem:latest  # Auto-updates
+    # ... rest of config
+```
+
+### Upgrading to a New Version
+
+1. Check the [FiveM release notes](https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/)
+2. Test the new version in a development environment first
+3. Update your `docker-compose.yml` with the new version number
+4. Deploy to production
+
+```bash
+# Pull the new version
+docker pull ghcr.io/skriptzip/docker_fivem:24580
+
+# Update and restart
+docker-compose pull
+docker-compose up -d
+```
 
 ## 🤝 Contributing
 

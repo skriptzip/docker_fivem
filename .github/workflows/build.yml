@@ -218,8 +218,11 @@ jobs:
           Die aktuelle empfohlene Version wurde automatisch von artifacts.jgscripts.com abgerufen.
           
           **Verfügbare Tags:**
-          - `latest` - Aktuell empfohlene Version
-          - `[VERSION]` - Spezifische Versionsnummer (z.B. `24574`)
+          - `latest` - Aktuell empfohlene Version (wird bei jedem Build aktualisiert)
+          - `[VERSION]` - Spezifische Versionsnummer (z.B. `24574`) - **bleibt permanent bestehen!**
+          
+          **Wichtig:** Alte Versions-Tags werden nie überschrieben und bleiben dauerhaft im Registry verfügbar.
+          Für Produktionsumgebungen wird empfohlen, spezifische Versionsnummern statt `latest` zu verwenden.
           
           Läuft automatisch alle 2 Wochen am Sonntag um 02:00 UTC!
           EOF
