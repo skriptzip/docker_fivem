@@ -7,11 +7,6 @@ on:
   
   # Manuell auslösen
   workflow_dispatch:
-    inputs:
-      maxArtifacts:
-        description: 'Maximale Anzahl Artifacts (standard: 5)'
-        required: false
-        default: '5'
 
   # Bei Dockerfile Changes bauen
   push:
@@ -30,131 +25,99 @@ jobs:
       should-build: ${{ steps.build-matrix.outputs.should-build }}
     
     steps:
-      - name: 🔍 Hole FiveM Artifacts von runtime.fivem.net
+      - name: 🔍 Hole FiveM Artifacts von artifacts.jgscripts.com
         id: fetch-artifacts
         run: |
-          echo "Hole FiveM Artifacts von runtime.fivem.net..."
+          echo "Hole FiveM Artifacts API Daten von artifacts.jgscripts.com/json..."
           
-          # Hole HTML-Seite mit Artifacts
-          ARTIFACTS_HTML=$(curl -sL --max-time 30 https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/ 2>&1)
+          # Hole JSON API Daten
+          API_RESPONSE=$(curl -sL --max-time 30 https://artifacts.jgscripts.com/json 2>&1)
           
-          if [ $? -ne 0 ] || [ -z "$ARTIFACTS_HTML" ]; then
-            echo "⚠️ Kann Artifacts-Seite nicht abrufen, nutze Fallback-Liste"
+          if [ $? -ne 0 ] || [ -z "$API_RESPONSE" ]; then
+            echo "⚠️ Kann API nicht abrufen, nutze Fallback-Liste"
             echo "use_fallback=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          # Extrahiere Artifact-Versionen (Format: XXXXX-hash)
-          # Regex erlaubt 4-6 Ziffern für Versionsnummer (z.B. 11532, 18443)
-          ARTIFACTS=$(echo "$ARTIFACTS_HTML" | grep -oE '[0-9]{4,6}-[a-f0-9]{40}' | sort -rn | uniq | head -10)
-          
-          if [ -z "$ARTIFACTS" ]; then
-            echo "⚠️ Keine Artifacts gefunden, nutze Fallback-Liste"
+          # Validiere JSON
+          echo "$API_RESPONSE" | jq . > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "⚠️ Ungültiges JSON von API, nutze Fallback-Liste"
             echo "use_fallback=true" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          echo "✅ Gefundene Artifacts (Top 10):"
-          echo "$ARTIFACTS"
+          # Extrahiere recommendedArtifact
+          RECOMMENDED=$(echo "$API_RESPONSE" | jq -r '.recommendedArtifact // empty')
           
-          # Speichere Artifacts
-          echo "artifacts<<EOF" >> $GITHUB_OUTPUT
-          echo "$ARTIFACTS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          if [ -z "$RECOMMENDED" ]; then
+            echo "⚠️ Keine recommendedArtifact in API gefunden, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extrahiere linuxDownloadLink
+          LINUX_DL=$(echo "$API_RESPONSE" | jq -r '.linuxDownloadLink // empty')
+          
+          if [ -z "$LINUX_DL" ]; then
+            echo "⚠️ Keine linuxDownloadLink in API gefunden, nutze Fallback-Liste"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extrahiere volle Version aus Download-Link (Format: XXXXX-hash)
+          # z.B. aus: https://runtime.fivem.net/.../24574-315823736cfbc085104ca0d32779311cd2f1a5a8/fx.tar.xz
+          FULL_VERSION=$(echo "$LINUX_DL" | grep -oE '[0-9]{4,6}-[a-f0-9]{40}')
+          
+          if [ -z "$FULL_VERSION" ]; then
+            echo "⚠️ Kann Version nicht aus Download-Link extrahieren, nutze Fallback"
+            echo "use_fallback=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "✅ Empfohlene Artifact gefunden:"
+          echo "   Version: $RECOMMENDED"
+          echo "   Full Version: $FULL_VERSION"
+          echo "   Download: $LINUX_DL"
+          
+          # Speichere für nächsten Schritt
+          echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "use_fallback=false" >> $GITHUB_OUTPUT
       
       - name: 📋 Erstelle Build-Matrix
         id: build-matrix
         run: |
-          MAX_ARTIFACTS=${{ github.event.inputs.maxArtifacts || '5' }}
           USE_FALLBACK="${{ steps.fetch-artifacts.outputs.use_fallback }}"
           
           if [ "$USE_FALLBACK" = "true" ]; then
             # Fallback: Nutze statische Artifact-Liste basierend auf Dockerfile-Defaults
-            # HINWEIS: Hashes sind Platzhalter und werden nur verwendet wenn runtime.fivem.net
+            # HINWEIS: Hashes sind Platzhalter und werden nur verwendet wenn artifacts.jgscripts.com
             # nicht erreichbar ist. Diese sollten durch echte Versionen aus dem Dockerfile ersetzt werden.
             echo "⚠️ Nutze Fallback-Artifact-Liste (basierend auf Dockerfile-Defaults)"
             
-            # Erstelle Fallback-Liste mit realistischen Versionen (basierend auf Dockerfile v18443)
-            FALLBACK_VERSIONS="18443-746f079d418d6a05ae5fe78268bc1b4fd66ce738
-          18442-746f079d418d6a05ae5fe78268bc1b4fd66ce737
-          18441-746f079d418d6a05ae5fe78268bc1b4fd66ce736
-          18440-746f079d418d6a05ae5fe78268bc1b4fd66ce735
-          18439-746f079d418d6a05ae5fe78268bc1b4fd66ce734"
+            # Erstelle Fallback mit nur einer Version (Dockerfile default)
+            ARTIFACT="18443"
+            FULL_VER="18443-746f079d418d6a05ae5fe78268bc1b4fd66ce738"
             
-            # Erstelle Matrix-JSON für Fallback (respektiert MAX_ARTIFACTS)
-            MATRIX="["
-            FIRST=true
-            COUNT=0
-            
-            while IFS= read -r ARTIFACT; do
-              if [ -z "$ARTIFACT" ]; then
-                continue
-              fi
-              
-              VERSION=$(echo "$ARTIFACT" | cut -d'-' -f1)
-              
-              if [ $COUNT -eq 0 ]; then
-                TAG="latest"
-              else
-                TAG="$VERSION"
-              fi
-              
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                MATRIX="$MATRIX,"
-              fi
-              
-              MATRIX="$MATRIX{\"artifact\":\"$VERSION\",\"fullver\":\"$ARTIFACT\",\"tag\":\"$TAG\"}"
-              
-              COUNT=$((COUNT + 1))
-              if [ $COUNT -ge $MAX_ARTIFACTS ]; then
-                break
-              fi
-            done <<< "$FALLBACK_VERSIONS"
-            
-            MATRIX="$MATRIX]"
+            MATRIX="[{\"artifact\":\"$ARTIFACT\",\"fullver\":\"$FULL_VER\",\"tag\":\"latest\"}]"
+            COUNT=1
           else
-            ARTIFACTS="${{ steps.fetch-artifacts.outputs.artifacts }}"
+            # Nutze empfohlene Artifact von API
+            RECOMMENDED="${{ steps.fetch-artifacts.outputs.recommended }}"
+            FULL_VERSION="${{ steps.fetch-artifacts.outputs.full_version }}"
             
-            # Erstelle Matrix-JSON
-            MATRIX="["
-            FIRST=true
-            COUNT=0
+            echo "✅ Nutze empfohlene Artifact von API:"
+            echo "   Artifact: $RECOMMENDED"
+            echo "   Full Version: $FULL_VERSION"
             
-            while IFS= read -r ARTIFACT; do
-              if [ -z "$ARTIFACT" ]; then
-                continue
-              fi
-              
-              # Extrahiere Versionsnummer (vor dem Bindestrich)
-              VERSION=$(echo "$ARTIFACT" | cut -d'-' -f1)
-              
-              if [ $COUNT -eq 0 ]; then
-                TAG="latest"
-              else
-                TAG="$VERSION"
-              fi
-              
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                MATRIX="$MATRIX,"
-              fi
-              
-              MATRIX="$MATRIX{\"artifact\":\"$VERSION\",\"fullver\":\"$ARTIFACT\",\"tag\":\"$TAG\"}"
-              
-              COUNT=$((COUNT + 1))
-              if [ $COUNT -ge $MAX_ARTIFACTS ]; then
-                break
-              fi
-            done <<< "$ARTIFACTS"
-            
-            MATRIX="$MATRIX]"
+            # Erstelle Matrix mit empfohlener Version
+            # Tag als "latest" und auch mit Versionsnummer für spätere Verwendung
+            MATRIX="[{\"artifact\":\"$RECOMMENDED\",\"fullver\":\"$FULL_VERSION\",\"tag\":\"latest\"}]"
+            COUNT=1
           fi
           
-          echo "✅ Matrix erstellt mit $COUNT Artifacts"
+          echo "✅ Matrix erstellt mit $COUNT Artifact(s)"
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
           echo "should-build=true" >> $GITHUB_OUTPUT
           
@@ -233,7 +196,7 @@ jobs:
       - name: ⏭️ Skip
         run: |
           echo "⏭️ Build übersprungen - keine gültigen Artifacts gefunden"
-          echo "   runtime.fivem.net konnte nicht abgerufen werden"
+          echo "   artifacts.jgscripts.com API konnte nicht abgerufen werden"
 
   summary:
     needs: build
@@ -249,13 +212,13 @@ jobs:
           **Registry:** ghcr.io/${{ github.repository }}
           
           ### Images Built:
-          FiveM Docker Images wurden erfolgreich gebaut und gepusht!
+          Das empfohlene FiveM Docker Image wurde erfolgreich gebaut und gepusht!
           
-          Die neuesten Artifacts wurden automatisch von runtime.fivem.net abgerufen.
+          Die aktuelle empfohlene Version wurde automatisch von artifacts.jgscripts.com abgerufen.
           
           **Verfügbare Tags:**
-          - `latest` - Neueste empfohlene Version
-          - `[VERSION]` - Spezifische Versionsnummern
+          - `latest` - Aktuell empfohlene Version
+          - `[VERSION]` - Spezifische Versionsnummer (z.B. `24574`)
           
           Läuft automatisch alle 2 Wochen am Sonntag um 02:00 UTC!
           EOF

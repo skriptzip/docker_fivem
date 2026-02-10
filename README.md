@@ -133,13 +133,13 @@ This repository uses GitHub Actions to automatically build and publish Docker im
 
 - **Scheduled Builds**: Runs automatically every 2 weeks on Sundays at 02:00 UTC
 - **Manual Trigger**: Can be triggered manually via GitHub Actions UI
-- **Automatic Updates**: Fetches the latest artifact versions from `runtime.fivem.net`
-- **Multiple Tags**: Creates both `latest` and version-specific tags (e.g., `18443`, `18442`)
+- **Automatic Updates**: Fetches the recommended artifact version from `artifacts.jgscripts.com`
+- **Smart Tagging**: Creates both `latest` and version-specific tags (e.g., `24574`)
 
 ### Available Tags
 
-- `ghcr.io/skriptzip/docker_fivem:latest` - Latest recommended FiveM version
-- `ghcr.io/skriptzip/docker_fivem:[VERSION]` - Specific FiveM version (e.g., `18443`)
+- `ghcr.io/skriptzip/docker_fivem:latest` - Currently recommended FiveM version
+- `ghcr.io/skriptzip/docker_fivem:[VERSION]` - Specific FiveM version (e.g., `24574`)
 
 ### Manual Workflow Trigger
 
@@ -148,7 +148,6 @@ To manually trigger a build:
 1. Go to the **Actions** tab in this repository
 2. Select **"🐳 Auto-Build FiveM Docker Images"** workflow
 3. Click **"Run workflow"**
-4. Optionally adjust the maximum number of artifacts to build (default: 5)
 
 ## 🤝 Contributing
 
