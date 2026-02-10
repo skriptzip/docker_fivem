@@ -34,36 +34,52 @@ jobs:
       - name: 🔍 Ermittle beste Artifacts von API
         id: discover
         run: |
+          set -e
           echo "🔍 Frage artifacts.jgscripts.com API ab..."
           
-          # Hole volle Artifact-Datenbank
-          RESPONSE=$(curl -s https://artifacts.jgscripts.com/api/json)
+          # Hole volle Artifact-Datenbank mit Fallback
+          RESPONSE=$(curl -s --max-time 10 https://artifacts.jgscripts.com/api/json || echo '{}')
           
-          # Extrahiere empfohlene Version
-          RECOMMENDED=$(echo "$RESPONSE" | jq -r '.recommendedArtifact // "0"' | cut -d'-' -f1)
+          if [ -z "$RESPONSE" ] || [ "$RESPONSE" = "{}" ]; then
+            echo "⚠️  API antwortet nicht, nutze Fallback-Versionen"
+            RECOMMENDED="11406"
+          else
+            # Extrahiere empfohlene Version
+            RECOMMENDED=$(echo "$RESPONSE" | jq -r '.recommendedArtifact // "11406"' | cut -d'-' -f1)
+          fi
+          
           echo "⭐ Empfohlene Version: $RECOMMENDED"
           echo "recommended=$RECOMMENDED" >> $GITHUB_OUTPUT
           
-          # Ermittle gebrochene Artifacts
-          BROKEN=$(echo "$RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort -rn | head -20 || echo "")
+          # Ermittle gebrochene Artifacts (optional)
+          BROKEN=""
+          if [ "$RESPONSE" != "{}" ]; then
+            BROKEN=$(echo "$RESPONSE" | jq -r '.brokenArtifacts | keys[]' 2>/dev/null | sort -rn | head -20 || echo "")
+          fi
           
           # Array für stabile Artifacts erstellen
           MAX_ARTIFACTS=${{ github.event.inputs.maxArtifacts || '5' }}
           STABLE_ARTIFACTS=()
           
           # Füge empfohlene Version ein
-          if [ -n "$RECOMMENDED" ] && [ "$RECOMMENDED" != "0" ]; then
+          if [ -n "$RECOMMENDED" ]; then
             STABLE_ARTIFACTS+=("$RECOMMENDED")
           fi
           
-          # Fallback: Nutze bekannte stabile Versionen (wenn RECOMMENDED nicht verfügbar)
-          # Diese sind empirisch bekannt als stabil
-          FALLBACK_STABLE="11406 11405 11404 11403 11402 11401 11400 11399 11398 11397"
+          # Fallback: Bekannte stabile Versionen
+          FALLBACK_STABLE="11405 11404 11403 11402 11401 11400 11399 11398 11397 11396"
           
-          # Added fallback versions
           for version in $FALLBACK_STABLE; do
             # Prüfe ob nicht bereits in Array
-            if [[ ! " ${STABLE_ARTIFACTS[@]} " =~ " ${version} " ]]; then
+            skip=0
+            for existing in "${STABLE_ARTIFACTS[@]}"; do
+              if [ "$existing" = "$version" ]; then
+                skip=1
+                break
+              fi
+            done
+            
+            if [ $skip -eq 0 ]; then
               # Prüfe ob nicht in broken list
               if [[ ! "$BROKEN" =~ "$version" ]]; then
                 STABLE_ARTIFACTS+=("$version")
@@ -76,18 +92,21 @@ jobs:
             fi
           done
           
-          # Konvertiere zu JSON array
-          ARTIFACTS_JSON=$(printf '%s\n' "${STABLE_ARTIFACTS[@]}" | jq -R . | jq -s .)
+          # Konvertiere zu JSON array (kompakt!)
+          json_array="["
+          for i in "${!STABLE_ARTIFACTS[@]}"; do
+            json_array="${json_array}\"${STABLE_ARTIFACTS[$i]}\""
+            if [ $i -lt $((${#STABLE_ARTIFACTS[@]} - 1)) ]; then
+              json_array="${json_array},"
+            fi
+          done
+          json_array="${json_array}]"
           
           echo "✅ Zu bauende Artifacts:"
-          echo "$ARTIFACTS_JSON" | jq .
+          echo "$json_array" | jq .
           
-          # Setze Output
-          echo "artifacts=$ARTIFACTS_JSON" >> $GITHUB_OUTPUT
-          
-          # Printe für Logs
-          ARTIFACT_COUNT=$(echo "$ARTIFACTS_JSON" | jq 'length')
-          echo "📊 Insgesamt: $ARTIFACT_COUNT Artifacts"
+          # Setze Output (single line!)
+          echo "artifacts=$json_array" >> $GITHUB_OUTPUT
 
   # Schritt 2: Baue Images
   build-images:
@@ -185,6 +204,10 @@ jobs:
     steps:
       - name: 📊 Generate Summary
         run: |
+          ARTIFACTS="${{ needs.discover-artifacts.outputs.artifacts }}"
+          RECOMMENDED="${{ needs.discover-artifacts.outputs.recommended }}"
+          REPO="${{ github.repository }}"
+          
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## 🐳 FiveM Docker Build Summary
           
@@ -192,21 +215,24 @@ jobs:
           |---|---|
           | **Status** | ✅ Erfolgreich |
           | **Registry** | ghcr.io |
-          | **Repository** | ${{ github.repository }} |
-          | **Zeitpunkt** | ${{ github.event_name }} |
-          | **Empfohlene Version** | ${{ needs.discover-artifacts.outputs.recommended }} |
+          | **Repository** | $REPO |
+          | **Empfohlene Version** | $RECOMMENDED |
           
           ### 🏷️ Gebaut Images:
           EOF
           
-          echo "${{ needs.discover-artifacts.outputs.artifacts }}" | jq -r '.[]' | while read artifact; do
-            echo "- \`ghcr.io/${{ github.repository }}:${artifact}\`" >> $GITHUB_STEP_SUMMARY
-          done
+          # Parse und zeige alle Artifacts
+          if [ -n "$ARTIFACTS" ]; then
+            echo "$ARTIFACTS" | jq -r '.[]' 2>/dev/null | while read artifact; do
+              if [ -n "$artifact" ]; then
+                echo "- \`ghcr.io/${REPO}:${artifact}\`" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔗 Links:
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           
+          ### 🔗 Links
           - [Artifacts Status](https://artifacts.jgscripts.com/)
-          - [Container Registry](https://github.com/orgs/${{ github.repository_owner }}/packages)
-          " >> $GITHUB_STEP_SUMMARY
-          # z.B. SSH, webhook, kubernetes, etc.
+          - [Container Registry](https://github.com/$REPO/pkgs/container/)
+          EOF
