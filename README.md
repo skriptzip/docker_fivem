@@ -125,6 +125,31 @@ docker build --build-arg FIVEM_NUM=18500 -t my-fivem .
 
 5. **Connect**: Join your server at `your-server-ip:30120`
 
+## 🔄 Automatic Builds
+
+This repository uses GitHub Actions to automatically build and publish Docker images with the latest FiveM artifacts.
+
+### How It Works
+
+- **Scheduled Builds**: Runs automatically every 2 weeks on Sundays at 02:00 UTC
+- **Manual Trigger**: Can be triggered manually via GitHub Actions UI
+- **Automatic Updates**: Fetches the latest artifact versions from `runtime.fivem.net`
+- **Multiple Tags**: Creates both `latest` and version-specific tags (e.g., `11532`, `11531`)
+
+### Available Tags
+
+- `ghcr.io/skriptzip/docker_fivem:latest` - Latest recommended FiveM version
+- `ghcr.io/skriptzip/docker_fivem:[VERSION]` - Specific FiveM version (e.g., `11532`)
+
+### Manual Workflow Trigger
+
+To manually trigger a build:
+
+1. Go to the **Actions** tab in this repository
+2. Select **"🐳 Auto-Build FiveM Docker Images"** workflow
+3. Click **"Run workflow"**
+4. Optionally adjust the maximum number of artifacts to build (default: 5)
+
 ## 🤝 Contributing
 
 1. Fork the repository
