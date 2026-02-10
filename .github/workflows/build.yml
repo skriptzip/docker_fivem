@@ -218,6 +218,11 @@ jobs:
           MATRIX='${{ needs.discover.outputs.matrix }}'
           ARTIFACT=$(echo "$MATRIX" | jq -r '.[0].artifact')
           
+          if [ -z "$ARTIFACT" ] || [ "$ARTIFACT" == "null" ]; then
+            echo "::error::Failed to extract artifact version from matrix"
+            exit 1
+          fi
+          
           echo "Updating README badge with FiveM version: $ARTIFACT"
           
           # Update the badge in README.md
