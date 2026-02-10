@@ -2,7 +2,7 @@ name: 🐳 Auto-Build FiveM Docker Images
 
 on:
   schedule:
-    # Alle 2 Wochen am Sonntag 02:00 UTC
+    # Jede Woche am Sonntag 02:00 UTC
     - cron: '0 2 * * 0'
   
   # Manuell auslösen
