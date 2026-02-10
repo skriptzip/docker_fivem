@@ -69,14 +69,50 @@ jobs:
           USE_FALLBACK="${{ steps.fetch-artifacts.outputs.use_fallback }}"
           
           if [ "$USE_FALLBACK" = "true" ]; then
-            # Fallback: Nutze statische Artifact-Liste
-            echo "⚠️ Nutze Fallback-Artifact-Liste"
-            ARTIFACTS="11405-example
-          11404-example
-          11403-example"
-            # Für Fallback nutzen wir nur die Versionsnummern
-            MATRIX='[{"artifact":"11405","fullver":"11405-example","tag":"latest"},{"artifact":"11404","fullver":"11404-example","tag":"11404"},{"artifact":"11403","fullver":"11403-example","tag":"11403"}]'
-            COUNT=3
+            # Fallback: Nutze statische Artifact-Liste basierend auf Dockerfile-Defaults
+            # Verwende realistische Versionsnummern mit Platzhalter-Hashes
+            echo "⚠️ Nutze Fallback-Artifact-Liste (basierend auf Dockerfile-Defaults)"
+            
+            # Erstelle Fallback-Liste mit realistischen Versionen
+            FALLBACK_VERSIONS="18443-746f079d418d6a05ae5fe78268bc1b4fd66ce738
+          18442-746f079d418d6a05ae5fe78268bc1b4fd66ce737
+          18441-746f079d418d6a05ae5fe78268bc1b4fd66ce736
+          18440-746f079d418d6a05ae5fe78268bc1b4fd66ce735
+          18439-746f079d418d6a05ae5fe78268bc1b4fd66ce734"
+            
+            # Erstelle Matrix-JSON für Fallback (respektiert MAX_ARTIFACTS)
+            MATRIX="["
+            FIRST=true
+            COUNT=0
+            
+            while IFS= read -r ARTIFACT; do
+              if [ -z "$ARTIFACT" ]; then
+                continue
+              fi
+              
+              VERSION=$(echo "$ARTIFACT" | cut -d'-' -f1)
+              
+              if [ $COUNT -eq 0 ]; then
+                TAG="latest"
+              else
+                TAG="$VERSION"
+              fi
+              
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                MATRIX="$MATRIX,"
+              fi
+              
+              MATRIX="$MATRIX{\"artifact\":\"$VERSION\",\"fullver\":\"$ARTIFACT\",\"tag\":\"$TAG\"}"
+              
+              COUNT=$((COUNT + 1))
+              if [ $COUNT -ge $MAX_ARTIFACTS ]; then
+                break
+              fi
+            done <<< "$FALLBACK_VERSIONS"
+            
+            MATRIX="$MATRIX]"
           else
             ARTIFACTS="${{ steps.fetch-artifacts.outputs.artifacts }}"
             
