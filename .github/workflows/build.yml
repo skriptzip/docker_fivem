@@ -157,7 +157,7 @@ jobs:
           ARTIFACT=${{ matrix.build.artifact }}
           FULL_VER=${{ matrix.build.fullver }}
           TAG=${{ matrix.build.tag }}
-          IMAGE="ghcr.io/${{ github.repository }}"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/fivem"
           
           echo "🔨 Building: $IMAGE:$TAG"
           echo "   Artifact: $ARTIFACT"
@@ -200,17 +200,47 @@ jobs:
           echo "   artifacts.jgscripts.com API konnte nicht abgerufen werden"
 
   summary:
-    needs: build
+    needs: [discover, build]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.discover.outputs.should-build == 'true'
+    permissions:
+      contents: write
     
     steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📝 Update README Badge
+        run: |
+          # Get the artifact version from discover job
+          MATRIX='${{ needs.discover.outputs.matrix }}'
+          ARTIFACT=$(echo "$MATRIX" | jq -r '.[0].artifact')
+          
+          echo "Updating README badge with FiveM version: $ARTIFACT"
+          
+          # Update the badge in README.md
+          sed -i "s|https://img.shields.io/badge/fivem-[0-9]*-green.svg|https://img.shields.io/badge/fivem-$ARTIFACT-green.svg|g" README.md
+          
+          # Check if there were changes
+          if git diff --quiet README.md; then
+            echo "No changes to README.md"
+          else
+            echo "README.md updated with new version badge"
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "chore: update FiveM version badge to $ARTIFACT"
+            git push
+          fi
+      
       - name: ✅ Summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'EOF'
           ## ✅ Build Complete
           
-          **Registry:** ghcr.io/${{ github.repository }}
+          **Registry:** ghcr.io/${{ github.repository_owner }}/fivem
           
           ### Images Built:
           Das empfohlene FiveM Docker Image wurde erfolgreich gebaut und gepusht!
