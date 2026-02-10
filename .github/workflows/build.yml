@@ -112,7 +112,7 @@ jobs:
             echo "   Full Version: $FULL_VERSION"
             
             # Erstelle Matrix mit empfohlener Version
-            # Tag als "latest" und auch mit Versionsnummer für spätere Verwendung
+            # Tag als "latest" und Build-Step erstellt auch Tag mit Versionsnummer
             MATRIX="[{\"artifact\":\"$RECOMMENDED\",\"fullver\":\"$FULL_VERSION\",\"tag\":\"latest\"}]"
             COUNT=1
           fi
@@ -164,6 +164,7 @@ jobs:
           echo "   Full Version: $FULL_VER"
           
           # Build tags: always include the specified TAG, plus ARTIFACT if different
+          # Für "latest" wird auch der Versions-Tag hinzugefügt (z.B. "24574")
           BUILD_TAGS="-t $IMAGE:$TAG"
           if [ "$TAG" != "$ARTIFACT" ]; then
             BUILD_TAGS="$BUILD_TAGS -t $IMAGE:$ARTIFACT"
