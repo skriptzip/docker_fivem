@@ -3,9 +3,11 @@ services:
     image: ghcr.io/skriptzip/fivem:latest
     container_name: fivem
     restart: on-failure
+    stop_grace_period: 46s
     environment:
       - LICENSE_KEY=${LICENSE_KEY}
       - ENABLE_WEBSOCKET=1
+      - WEBSOCKET_API_KEY=${WEBSOCKET_API_KEY:-}
       - RCON_PASSWORD=${RCON_PASSWORD:-changeme}
       - SERVER_NAME=${SERVER_NAME:-FiveM Server}
       - SERVER_DESC=${SERVER_DESC:-A FiveM Server}
@@ -26,9 +28,11 @@ services:
       context: .
     container_name: fivem-local
     restart: on-failure
+    stop_grace_period: 46s
     environment:
       - LICENSE_KEY=${LICENSE_KEY}
       - ENABLE_WEBSOCKET=1
+      - WEBSOCKET_API_KEY=${WEBSOCKET_API_KEY:-}
       - RCON_PASSWORD=${RCON_PASSWORD:-changeme}
       - SERVER_NAME=${SERVER_NAME:-FiveM Server}
       - SERVER_DESC=${SERVER_DESC:-A FiveM Server}

@@ -54,11 +54,65 @@ _Note: Interactive and pseudo-tty options (`-ti`) are required to prevent contai
 |----------|----------|---------|-------------|
 | `LICENSE_KEY` | Yes* | - | FiveM license key from [keymaster.fivem.net](https://keymaster.fivem.net) |
 | `RCON_PASSWORD` | No | Random 16-char | RCON password for server management |
+| `WEBSOCKET_API_KEY` | No | - | API key for WebSocket authentication (highly recommended) |
+| `ENABLE_WEBSOCKET` | No | 1 | Enable WebSocket server on port 30121 |
 | `NO_DEFAULT_CONFIG` | No | - | Set to disable default config (enables txAdmin) |
 | `NO_LICENSE_KEY` | No | - | Set to disable license key requirement |
 | `NO_ONESYNC` | No | - | Set to disable OneSync |
 
 *Required unless `NO_LICENSE_KEY` is set
+
+## 🔒 WebSocket Authentication
+
+The WebSocket server (port 30121) supports API-key based authentication. This is **highly recommended** for production environments.
+
+### Setup
+
+1. Generate a secure API key:
+```bash
+# Linux/macOS
+openssl rand -base64 32
+
+# Windows PowerShell
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([guid]::NewGuid().ToString() + [guid]::NewGuid().ToString()))
+```
+
+2. Add to `.env`:
+```bash
+WEBSOCKET_API_KEY=your-secure-random-api-key-here
+```
+
+3. Connect with Bearer token:
+```javascript
+const ws = new WebSocket("ws://localhost:30121", {
+    headers: {
+        "Authorization": `Bearer ${API_KEY}`
+    }
+});
+```
+
+See [WEBSOCKET_AUTH.md](WEBSOCKET_AUTH.md) for complete documentation, backend examples, and security best practices.
+
+## 💾 Graceful Shutdown
+
+The server supports graceful shutdown when the container stops. It waits up to **45 seconds** for resources to save data (players, vehicles, etc) before terminating.
+
+### How it works
+- `docker-compose stop` triggers SIGTERM
+- FiveM receives shutdown signal and emits `cv_framework:server:Shutdown` event
+- Resources listen and save data (45 seconds)
+- Server terminates gracefully
+
+### In your resources:
+```lua
+AddEventHandler('cv_framework:server:Shutdown', function(payload)
+    -- Save your data here
+    SavePlayerData()
+    SaveVehicles()
+end)
+```
+
+See [graceful-shutdown](fivem-data/resources/[system]/graceful-shutdown/) resource for details.
 
 ## 📁 Volume Mounts
 
