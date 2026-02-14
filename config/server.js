@@ -42,7 +42,7 @@ function validateApiKey(authHeader, queryParams) {
             ...process.argv.slice(2) // Pass through any additional arguments
     ];
 
-const wss = new WebSocketServer({ port: 30121, noServer: true });
+const wss = new WebSocketServer({ noServer: true });
 let fxServer = null;
 let connectedClients = new Set();
 
