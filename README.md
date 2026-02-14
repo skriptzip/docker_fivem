@@ -91,8 +91,6 @@ const ws = new WebSocket("ws://localhost:30121", {
 });
 ```
 
-See [WEBSOCKET_AUTH.md](WEBSOCKET_AUTH.md) for complete documentation, backend examples, and security best practices.
-
 ## 💾 Graceful Shutdown
 
 The server supports graceful shutdown when the container stops. It waits up to **45 seconds** for resources to save data (players, vehicles, etc) before terminating.
