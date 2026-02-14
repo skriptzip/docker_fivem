@@ -112,8 +112,6 @@ AddEventHandler('cv_framework:server:Shutdown', function(payload)
 end)
 ```
 
-See [graceful-shutdown](fivem-data/resources/[system]/graceful-shutdown/) resource for details.
-
 ## 📁 Volume Mounts
 
 | Container Path | Purpose |
@@ -128,7 +126,7 @@ See [graceful-shutdown](fivem-data/resources/[system]/graceful-shutdown/) resour
 
 ### Available Tags
 
-- `ghcr.io/skriptzip/fivem:latest` - Latest recommended version (updates every 2 weeks)
+- `ghcr.io/skriptzip/fivem:latest` - Latest recommended version (updates every week)
 - `ghcr.io/skriptzip/fivem:[VERSION]` - Specific version (e.g., `24574`)
 
 ### Version Pinning
