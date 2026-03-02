@@ -3,7 +3,7 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { URL } from "url";
 import http from "http";
 
-const PORT = 30121;
+const PORT = parseInt(process.env.WEBSOCKET_PORT || "30121", 10);
 const SHUTDOWN_TIMEOUT = 45000;
 const SHUTDOWN_COMMANDS = {
     docker: "trigger_shutdown docker container_stop 45",
@@ -172,10 +172,10 @@ let isShuttingDown = false;
 process.on("SIGTERM", () => shutdown(SHUTDOWN_COMMANDS.docker));
 process.on("SIGINT", () => shutdown(SHUTDOWN_COMMANDS.manual));
 
-console.log(`Listening on port ${PORT}`);
+console.log(`Listening on port ${PORT} (WebSocket via Traefik)`);
 server.listen(PORT, () => {
     console.log(`WebSocket server ready on port ${PORT}`);
+    console.log("Traefik will handle WSS (WebSocket Secure) with Let's Encrypt");
+    console.log("Starting FiveM server...");
+    startFiveM();
 });
-
-console.log("Starting FiveM server...");
-startFiveM();
