@@ -8,7 +8,16 @@
 
 A containerized FiveM server with automatic configuration and OneSync support.
 
-Using Docker Compose:
+## Features
+
+- **WebSocket Server:** Real-time console streaming and remote command execution
+- **TypeScript Control Layer:** Modern Node.js WebSocket server for server management
+- **Graceful Shutdown:** event for resources to save data gracefully
+- **Environment-Based Config:** Automatic `server.cfg` generation from env variables
+- **OneSync Ready:** Built-in OneSync support for improved multiplayer sync
+- **Alpine Linux:** Minimal, fast image (~200MB base)
+
+## Quick Start
 ```yaml
 services:
   fivem-local-server:
