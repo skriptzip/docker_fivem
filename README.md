@@ -9,7 +9,7 @@
 A containerized FiveM server with automatic configuration and OneSync support.
 
 Using Docker Compose:
-```bash
+```yaml
 services:
   fivem-local-server:
     image: ghcr.io/skriptzip/fivem:latest
