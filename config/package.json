@@ -1,0 +1,24 @@
+{
+  "name": "docker_fivem",
+  "version": "1.0.0",
+  "description": "WebSocket server for FiveM Docker container",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "tsx server.ts"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

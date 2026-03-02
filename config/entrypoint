@@ -1,0 +1,99 @@
+#!/bin/sh
+
+if [ -n "$DEBUG" ]; then
+    set -x
+fi
+
+if ! find . -mindepth 1 | read -r; then
+    >&2 echo "Creating default configs..."
+    cp -r /opt/cfx-server-data/* /config
+    >&2 echo "Default configs created"
+fi
+
+TEMPLATE_FILE=""
+if [ -f /config/server.cfg.template ]; then
+    TEMPLATE_FILE="/config/server.cfg.template"
+    >&2 echo "Using project template: /config/server.cfg.template"
+elif [ -f /opt/cfx-server-data/server.cfg.template ]; then
+    TEMPLATE_FILE="/opt/cfx-server-data/server.cfg.template"
+    >&2 echo "Using image template: /opt/cfx-server-data/server.cfg.template"
+else
+    >&2 echo "ERROR: No server.cfg.template found!"
+    exit 1
+fi
+
+if [ -n "$TEMPLATE_FILE" ] && [ -f "$TEMPLATE_FILE" ]; then
+    >&2 echo "Generating server.cfg from template..."
+    >&2 echo ""
+    
+    >&2 echo "Found variables in template:"
+    VARS=$(grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' "$TEMPLATE_FILE" | sed 's/[${}]//g' | sort -u)
+    
+    for VAR_NAME in $VARS; do
+        VAR_VALUE=$(eval echo \$$VAR_NAME)
+        if [ -n "$VAR_VALUE" ]; then
+            >&2 echo "  ✓ \${$VAR_NAME} = $VAR_VALUE"
+        else
+            >&2 echo "  ✗ \${$VAR_NAME} = (not set)"
+        fi
+    done
+    
+    >&2 echo ""
+    >&2 echo "Replacing variables in server.cfg..."
+    cp "$TEMPLATE_FILE" /config/server.cfg
+
+    for VAR_NAME in $VARS; do
+        VAR_VALUE=$(printenv "$VAR_NAME")
+        if [ -n "$VAR_VALUE" ]; then
+
+            ESCAPED_VALUE=$(printf '%s\n' "$VAR_VALUE" | sed -e 's/[#\&/|]/\\&/g')
+            >&2 echo "DEBUG: sed -i s#\${$VAR_NAME}#$ESCAPED_VALUE#g"
+
+            sed -i "s#\${$VAR_NAME}#$ESCAPED_VALUE#g" /config/server.cfg
+            >&2 echo "  Replaced \${$VAR_NAME}"
+        fi
+    done
+
+    >&2 echo "✓ server.cfg generated successfully"
+fi
+
+if [ -z "$NO_ONESYNC" ]; then
+    ONESYNC_ARGS="+set onesync on +set onesync_population true"
+fi
+
+CONFIG_ARGS=
+if [ -z "${NO_DEFAULT_CONFIG}" ]; then
+    CONFIG_ARGS="$CONFIG_ARGS $ONESYNC_ARGS +exec /config/server.cfg"
+fi
+
+if [ -z "${NO_LICENSE_KEY}${NO_LICENCE_KEY}" ]; then
+    if [ -z "${LICENSE_KEY}" ] && [ -n "${LICENCE_KEY}" ]; then
+        LICENSE_KEY="${LICENCE_KEY}"
+    fi
+
+    if [ -z "${NO_DEFAULT_CONFIG}"] && [ -z "${LICENSE_KEY}" ]; then
+        >&2 printf "License key not found in environment, please create one at https://keymaster.fivem.net!\n"
+        exit 1
+    fi
+
+    if [ -z "${CONFIG_ARGS}" ] && [ -n "${LICENSE_KEY}" ] && [ -n "${NO_DEFAULT_CONFIG}" ]; then
+        >&2 printf "txadmin does not use the \$LICENSE_KEY environment variable.\nPlease remove it and set it through the txadmin web UI\n\n"
+        exit 1
+    fi
+
+    CONFIG_ARGS="$CONFIG_ARGS +set sv_licenseKey ${LICENSE_KEY}"
+fi
+
+if [ -n "$ENABLE_WEBSOCKET" ]; then
+    >&2 echo "Starting FiveM server with WebSocket support..."
+    exec node /usr/local/dist/server.js $CONFIG_ARGS $*
+else
+    >&2 echo "Starting FiveM server (standard mode)..."
+    exec /opt/cfx-server/ld-musl-x86_64.so.1 \
+        --library-path "/usr/lib/v8/:/lib/:/usr/lib/" \
+        -- \
+        /opt/cfx-server/FXServer \
+            +set citizen_dir /opt/cfx-server/citizen/ \
+            $CONFIG_ARGS \
+            $*
+fi
