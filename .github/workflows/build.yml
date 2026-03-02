@@ -159,25 +159,20 @@ jobs:
           echo "   Artifact: $ARTIFACT"
           echo "   Full Version: $FULL_VER"
           
-          BUILD_TAGS="-t $IMAGE:$TAG"
-          if [ "$TAG" != "$ARTIFACT" ]; then
-            BUILD_TAGS="$BUILD_TAGS -t $IMAGE:$ARTIFACT"
-          fi
-          
+          # Build with both latest and version tags
           docker buildx build \
             --push \
             -f Dockerfile \
             --build-arg FIVEM_NUM=$ARTIFACT \
             --build-arg FIVEM_VER=$FULL_VER \
             --build-arg DATA_VER=0e7ba538339f7c1c26d0e689aa750a336576cf02 \
-            $BUILD_TAGS \
+            -t $IMAGE:$TAG \
+            -t $IMAGE:$ARTIFACT \
             .
           
           if [ $? -eq 0 ]; then
             echo "✅ Built: $IMAGE:$TAG"
-            if [ "$TAG" != "$ARTIFACT" ]; then
-              echo "✅ Also tagged as: $IMAGE:$ARTIFACT"
-            fi
+            echo "✅ Also tagged as: $IMAGE:$ARTIFACT"
           else
             exit 1
           fi
