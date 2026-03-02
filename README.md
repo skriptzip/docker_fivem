@@ -4,7 +4,7 @@
 </h1>
 
 [![Docker Image](https://img.shields.io/badge/docker-fivem-blue.svg)](https://github.com/skriptzip/docker_fivem)
-[![FiveM Version](https://img.shields.io/badge/fivem-25963-green.svg)](https://fivem.net/)
+[![FiveM Version](https://img.shields.io/badge/fivem-26261-green.svg)](https://fivem.net/)
 
 A containerized FiveM server with automatic configuration and OneSync support.
 
