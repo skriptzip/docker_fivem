@@ -1,7 +1,4 @@
-<h1>
-  <img src="https://logos-world.net/wp-content/uploads/2021/03/FiveM-Logo.png" height="32" style="vertical-align:middle; margin-right:8px;"/>
-  FiveM-Server Docker
-</h1>
+# <img src="https://logos-world.net/wp-content/uploads/2021/03/FiveM-Logo.png" height="32" style="vertical-align:middle; margin-right:8px;"/> FiveM-Server Docker
 
 [![Docker Image](https://img.shields.io/badge/docker-fivem-blue.svg)](https://github.com/skriptzip/docker_fivem)
 [![FiveM Version](https://img.shields.io/badge/fivem-26261-green.svg)](https://fivem.net/)
@@ -25,10 +22,32 @@ A containerized FiveM server with automatic configuration and OneSync support.
 
 ```yaml
 services:
-  fivem-local-server:
-    build:
-      context: .
-    container_name: fivem-local
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.fivem.address=:30120"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+      - "30120:30120"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./letsencrypt:/letsencrypt
+
+  fivem:
+    image: ghcr.io/skriptzip/fivem:26261
+    container_name: fivem
     restart: on-failure
     stop_grace_period: 46s
     environment:
@@ -45,51 +64,44 @@ services:
       - MYSQL_CONNECTION=${MYSQL_CONNECTION:-mysql://user:password@localhost:3306/database}
       - LOCALE=${LOCALE:-en-US}
     ports:
-      - "30120:30120"
       - "30120:30120/udp"
     volumes:
       - ./fivem-data:/config
+    tty: true
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fivem-wss.rule=Host(`${TRAEFIK_HOST}`)"
-      - "traefik.http.routers.fivem-wss.entrypoints=websecure"
-      - "traefik.http.routers.fivem-wss.tls.certresolver=letsencrypt"
+
+      # ─── FiveM TCP (play.example.com:30120) ───
+      - "traefik.tcp.routers.fivem-tcp.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.fivem-tcp.entrypoints=fivem"
+      - "traefik.tcp.services.fivem-tcp.loadbalancer.server.port=30120"
+
+      # ─── WSS Public (wss.example.com) ───
+      - "traefik.http.routers.fivem-wss-public.rule=Host(`${WSS_HOST}`)"
+      - "traefik.http.routers.fivem-wss-public.entrypoints=websecure"
+      - "traefik.http.routers.fivem-wss-public.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fivem-wss-public.service=fivem-wss"
+
+      # ─── WSS Local (wss.localhost) ───
+      - "traefik.http.routers.fivem-wss-local.rule=Host(`wss.localhost`)"
+      - "traefik.http.routers.fivem-wss-local.entrypoints=web"
+      - "traefik.http.routers.fivem-wss-local.service=fivem-wss"
+
+      # ─── FiveM Local (fivem.localhost) ───
+      - "traefik.http.routers.fivem-local.rule=Host(`fivem.localhost`)"
+      - "traefik.http.routers.fivem-local.entrypoints=web"
+      - "traefik.http.routers.fivem-local.service=fivem-wss"
+
+      # ─── Shared WSS Service ───
       - "traefik.http.services.fivem-wss.loadbalancer.server.port=${WEBSOCKET_PORT:-30121}"
       - "traefik.http.services.fivem-wss.loadbalancer.server.scheme=http"
-    networks:
-      - fivem-network
     depends_on:
       - traefik
-
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=fivem-network"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config/acme.json:/acme.json
-    networks:
-      - fivem-network
-
-networks:
-  fivem-network:
-    driver: bridge
 ```
 
+> **Note:** `*.localhost` domains resolve automatically in modern browsers and Windows/WSL — no hosts file entry needed.
 
+> **Note:** Traefik reaches containers via the internal Docker network. Port `30121` does **not** need to be exposed in `ports:` — only UDP `30120` needs a direct mapping since Traefik cannot proxy UDP traffic.
 
 ## Configuration
 
@@ -98,7 +110,7 @@ networks:
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `LICENSE_KEY` | FiveM key from [keymaster.fivem.net](https://keymaster.fivem.net) | ✅ Yes |
-| `TRAEFIK_HOST` | Hostname for WSS routing (e.g., `fivem.example.com`) | ✅ Yes |
+| `WSS_HOST` | Hostname for WSS routing (e.g., `wss.example.com`) | ✅ Yes |
 | `LETSENCRYPT_EMAIL` | Email for Let's Encrypt certificate notifications | ✅ Yes |
 | `WEBSOCKET_API_KEY` | API key for WebSocket authentication (Bearer token or query param) | ❌ Optional |
 | `WEBSOCKET_PORT` | Internal WebSocket server port (default: 30121) | ❌ Optional |
@@ -107,19 +119,25 @@ networks:
 | `NO_DEFAULT_CONFIG` | Skip default config (for txAdmin) | ❌ Optional |
 | `NO_ONESYNC` | Disable OneSync | ❌ Optional |
 
+### DNS Setup
+
+| Domain | Record | Purpose |
+|--------|--------|---------|
+| `play.example.com` | A → your server IP | FiveM direct connect |
+| `wss.example.com` | A → your server IP | WebSocket admin console |
+| `*.localhost` | automatic ✅ | Local development |
+
 ## WebSocket Secure (WSS)
 
-With API Key in query parameter:
+Connect via query parameter:
 ```javascript
-const apiKey = 'your_websocket_api_key';
-const ws = new WebSocket(`wss://fivem.example.com?api_key=${apiKey}`);
+const ws = new WebSocket(`wss://wss.example.com?api_key=${apiKey}`);
 ```
 
 Or with Bearer token:
 ```javascript
-const ws = new WebSocket('wss://fivem.example.com');
+const ws = new WebSocket('wss://wss.example.com');
 ws.onopen = () => {
-  // Wait for connection before sending auth
   ws.send(JSON.stringify({ type: 'auth', token: apiKey }));
 };
 ```
