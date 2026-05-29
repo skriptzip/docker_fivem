@@ -10,7 +10,7 @@
     "dev": "tsx server.ts"
   },
   "dependencies": {
-    "ws": "^8.14.2"
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
