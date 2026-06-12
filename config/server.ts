@@ -94,13 +94,13 @@ function startFiveM(): void {
 
     fxServer.stdout.on("data", (data: Buffer) => {
         const message = data.toString();
-        console.log(message);
+        process.stdout.write(message);
         broadcastClients({ type: "stdout", data: message });
     });
 
     fxServer.stderr.on("data", (data: Buffer) => {
         const message = data.toString();
-        console.error(message);
+        process.stderr.write(message);
         broadcastClients({ type: "stderr", data: message });
     });
 
