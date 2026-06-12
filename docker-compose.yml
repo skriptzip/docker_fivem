@@ -5,6 +5,8 @@ services:
     container_name: fivem-local
     restart: on-failure
     stop_grace_period: 46s
+    tty: true
+    stdin_open: true
     environment:
       - LICENSE_KEY=${LICENSE_KEY}
       - ENABLE_WEBSOCKET=1

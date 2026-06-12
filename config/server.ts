@@ -44,6 +44,7 @@ const additionalArgs = [
 const wss = new WebSocketServer({ noServer: true });
 let fxServer: ChildProcessWithoutNullStreams | null = null;
 const connectedClients = new Set<WebSocket>();
+let stdinForwarderInstalled = false;
 
 function broadcastClients(data: Record<string, unknown>): void {
     const message = JSON.stringify(data);
@@ -113,6 +114,22 @@ function startFiveM(): void {
     });
 }
 
+function forwardAttachedStdin(): void {
+    if (stdinForwarderInstalled) {
+        return;
+    }
+
+    stdinForwarderInstalled = true;
+    process.stdin.setEncoding("utf8");
+    process.stdin.resume();
+
+    process.stdin.on("data", (chunk: string) => {
+        if (fxServer && fxServer.stdin.writable) {
+            fxServer.stdin.write(chunk);
+        }
+    });
+}
+
 wss.on("connection", (ws: WebSocket) => {
     console.log("Client connected");
     connectedClients.add(ws);
@@ -177,5 +194,6 @@ server.listen(PORT, () => {
     console.log(`WebSocket server ready on port ${PORT}`);
     console.log("Traefik will handle WSS (WebSocket Secure) with Let's Encrypt");
     console.log("Starting FiveM server...");
+    forwardAttachedStdin();
     startFiveM();
 });
